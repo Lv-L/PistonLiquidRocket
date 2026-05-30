@@ -18,9 +18,10 @@ Physics model
   - Thrust coefficient CF with full pressure-area term.
 
 Supported fuels  (pass via --fuel or EngineConfig.fuel)
-  IPA      -- Isopropyl alcohol  (C3H8O)
-  Ethanol  -- Ethanol            (C2H6O)
-  Methanol -- Methanol           (CH4O)
+  IPA      -- Isopropyl alcohol        (C3H8O)
+  Ethanol  -- Ethanol                  (C2H6O)
+  Methanol -- Methanol                 (CH4O)
+  E85      -- 85% ethanol / 15% iso-octane blend
 
 Usage
   python PistonLiquidRocket.py                         # default config
@@ -220,10 +221,33 @@ fuel METHANOL  C 1 H 4 O 1   wt%=100.
     mw_exh_a=18.0, mw_exh_b=1.30, gamma_a=1.230, gamma_b=0.005,
 )
 
+E85 = Fuel(
+    # E85: 85 vol% ethanol (C2H6O) + 15 vol% iso-octane (C8H18) as gasoline surrogate.
+    # Effective blend density: 0.85*789 + 0.15*692 = 774 kg/m^3
+    # Effective MW and stoichiometry derived from volume-weighted composition.
+    #   Mass fractions: ethanol 86.6 wt%, iso-octane 13.4 wt%
+    #   n_O2 per gram: 0.866*(3/46.07) + 0.134*(12.5/114.23) = 0.07109 mol/g
+    #   Effective MW ~ 50.0 g/mol  =>  n_o2_stoich = 0.07109 * 50.0 = 3.555
+    name='E85', cea_name='E85',
+    cea_card="""
+fuel E85  C 2 H 6 O 1   wt%=86.600
+  h,Kcal=-66.350  t(K)=298.15  rho,g/cc=0.789
+fuel E85  C 8 H 18       wt%=13.400
+  h,Kcal=-61.960  t(K)=298.15  rho,g/cc=0.692
+""",
+    coolprop_name=None,
+    density_ref=774.0,
+    mw_g_mol=50.0,
+    n_o2_stoich=3.555,
+    t_ad_peak=3210.0, t_ad_of_peak=5.8, t_ad_sigma=1.82, t_ad_floor=1500.0,
+    mw_exh_a=20.2, mw_exh_b=1.18, gamma_a=1.225, gamma_b=0.006,
+)
+
 FUELS: dict[str, Fuel] = {
     'IPA':      IPA,
     'Ethanol':  ETHANOL,
     'Methanol': METHANOL,
+    'E85':      E85,
 }
 
 # ── rocketCEA object cache ────────────────────────────────────────────────────
@@ -434,16 +458,20 @@ class PistonTank:
 @dataclass
 class EngineConfig:
     # N2O oxidiser
-    ox_mass          : float         = 4.00    # kg
+    ox_mass          : float         = 3.7    # kg
     ox_tank_volume   : float         = 8.0e-3  # m^3
     n2o_init_temp_K  : float         = 273.0   # K  (0 C)
     n2o_isothermal   : bool          = False
 
-    # Injector
-    injector_dp_frac : float         = 0.2     # dP/P_feed
+    # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
+    cd_ox        : float          = 0.65    # discharge coefficient, N2O orifice(s)
+    cd_fuel      : float          = 0.65    # discharge coefficient, fuel orifice(s)
+    A_inj_ox     : Optional[float] = None   # total N2O injector area [m^2]
+    A_inj_fuel   : Optional[float] = None   # total fuel injector area [m^2]
+    inj_target_dp: float          = 0.20    # dP/P_feed fraction used for auto-sizing
 
     # O/F and fuel
-    of_ratio         : float         = 5.5
+    of_ratio         : float         = 2.7
     fuel             : Optional[Fuel] = None    # None -> IPA in __post_init__
     cstar_eta        : float         = 0.94
     nozzle_eta       : float         = 0.97
@@ -459,8 +487,9 @@ class EngineConfig:
     ipa_polytropic_n : float = 1.0
 
     # Nozzle geometry
-    throat_diam      : float = 0.025   # m
-    exit_diam        : float = 0.058   # m
+    throat_diam      : float = 0.0254   # m
+    AeAt             : float = 4
+    exit_diam        : float = throat_diam*AeAt**0.5
 
     # Environment
     p_ambient        : float = ATM
@@ -474,6 +503,35 @@ class EngineConfig:
             density  = self.fuel.liquid_density()
             headspace = 1.05 if self.ipa_uses_n2o_p else 1.25
             self.fuel_tank_volume = self.fuel_mass / density * headspace
+
+        # Auto-size injector areas if not provided.
+        # Uses design O/F and target dP to size both injectors proportionally.
+        if self.A_inj_ox is None or self.A_inj_fuel is None:
+            rho_ox = _CP('D', 'T', self.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
+            rho_fuel = self.fuel.liquid_density()
+            p_sat_0 = _CP('P', 'T', self.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
+            # Estimate initial chamber pressure from target dP
+            p_c_nom = p_sat_0 * (1.0 - self.inj_target_dp)
+            A_t = np.pi / 4.0 * self.throat_diam ** 2
+            _, _, _, cstar_nom = combustion_props(self.fuel, self.of_ratio, p_c_nom,
+                                                   (self.exit_diam / self.throat_diam)**2)
+            cstar = cstar_nom * 0.94
+            k_mdot_nozzle = A_t / cstar
+            mdot_nozzle_nom = k_mdot_nozzle * p_c_nom
+
+            # Split by O/F ratio
+            mdot_ox_nom = mdot_nozzle_nom * self.of_ratio / (1.0 + self.of_ratio)
+            mdot_fuel_nom = mdot_nozzle_nom / (1.0 + self.of_ratio)
+
+            # Orifice equation: ṁ = Cd * A * √(2 * ρ * ΔP)
+            # Solve for A: A = ṁ / (Cd * √(2 * ρ * ΔP))
+            dp_nom = p_sat_0 * self.inj_target_dp
+            if self.A_inj_ox is None:
+                self.A_inj_ox = mdot_ox_nom / (
+                    self.cd_ox * np.sqrt(2.0 * rho_ox * dp_nom) + 1e-12)
+            if self.A_inj_fuel is None:
+                self.A_inj_fuel = mdot_fuel_nom / (
+                    self.cd_fuel * np.sqrt(2.0 * rho_fuel * dp_nom) + 1e-12)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -508,17 +566,20 @@ class PistonEngine:
         self.time        = 0.0
         self.stop_reason = "propellant exhausted"
 
-        # ── Pre-compute combustion / nozzle constants (fixed O/F + geometry) ──
-        of       = cfg.of_ratio
-        p_c_nom  = (_CP('P', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
-                    * (1.0 - cfg.injector_dp_frac))
+        # ── Injector coefficients ──
+        # K = Cd * A * √(2ρ)  for each propellant
+        rho_ox_nom   = _CP('D', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
+        rho_fuel_nom = cfg.fuel.liquid_density()
+        self._K_ox   = cfg.cd_ox * cfg.A_inj_ox * np.sqrt(2.0 * rho_ox_nom)
+        self._K_fuel = cfg.cd_fuel * cfg.A_inj_fuel * np.sqrt(2.0 * rho_fuel_nom)
 
+        # ── Nozzle constants (O/F varies; use a reference design point for gamma) ──
+        of_ref = cfg.of_ratio
+        p_c_nom = _CP('P', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID) * 0.8
         T_c, gamma, _, cstar_ideal = combustion_props(
-            cfg.fuel, of, p_c_nom, self.expansion_ratio
+            cfg.fuel, of_ref, p_c_nom, self.expansion_ratio
         )
-        cstar = cstar_ideal * cfg.cstar_eta   # apply combustion efficiency once
-
-        # mdot = Pc * At / cstar  =>  mdot = k_mdot * Pc
+        cstar = cstar_ideal * cfg.cstar_eta
         self._k_mdot = A_t / cstar
 
         # CF = cf_A - cf_B / Pc  (decompose pressure-area term)
@@ -527,58 +588,112 @@ class PistonEngine:
         cf_mom     = np.sqrt(2.0 * gamma**2 / (gamma - 1)
                              * (2.0 / (gamma + 1)) ** ((gamma + 1) / (gamma - 1))
                              * (1.0 - pe_over_pc ** ((gamma - 1) / gamma)))
-        self._cf_A = (cf_mom + pe_over_pc * self.expansion_ratio) * cfg.nozzle_eta
-        self._cf_B = cfg.p_ambient * self.expansion_ratio * cfg.nozzle_eta
+        self._cf_A      = (cf_mom + pe_over_pc * self.expansion_ratio) * cfg.nozzle_eta
+        self._cf_B      = cfg.p_ambient * self.expansion_ratio * cfg.nozzle_eta
+        self._pe_over_pc = pe_over_pc
+        self._p_c_sep   = 0.4 * cfg.p_ambient / pe_over_pc
 
-        self._cstar   = cstar
-        self._T_c     = T_c
-        self._gamma   = gamma
-        self._of      = of
-        self._p_choke = cfg.p_ambient * ((gamma + 1) / 2.0) ** (gamma / (gamma - 1))
-        self._dp_frac = cfg.injector_dp_frac
+        self._cstar_nom = cstar
+        self._T_c_nom   = T_c
+        self._gamma_nom = gamma
+        self._p_choke   = cfg.p_ambient * ((gamma + 1) / 2.0) ** (gamma / (gamma - 1))
 
         self.hist: dict[str, list] = {k: [] for k in [
             't', 'thrust', 'isp', 'mdot', 'mdot_fuel', 'mdot_ox',
-            'p_chamber', 'p_feed_ox', 'p_feed_ipa',
+            'p_chamber', 'p_feed_ox', 'p_feed_ipa', 'of_actual',
             't_chamber', 'n2o_temp', 'cstar', 'cf',
             'fuel_mass', 'ox_mass',
         ]}
+
+    def _solve_chamber_pressure(self, p_feed_ox: float, p_feed_fuel: float) -> Optional[float]:
+        """
+        Solve for chamber pressure from orifice + nozzle equations.
+        ṁ_ox = K_ox * √(max(0, p_feed_ox - Pc))
+        ṁ_fuel = K_fuel * √(max(0, p_feed_fuel - Pc))
+        ṁ_total = ṁ_ox + ṁ_fuel = k_mdot * Pc   (nozzle constraint)
+
+        Uses Newton-Raphson to find Pc that satisfies the constraint.
+        """
+        def residual(p_c):
+            dp_ox = max(0.0, p_feed_ox - p_c)
+            dp_fuel = max(0.0, p_feed_fuel - p_c)
+            mdot_ox = self._K_ox * np.sqrt(dp_ox)
+            mdot_fuel = self._K_fuel * np.sqrt(dp_fuel)
+            mdot_nozzle = self._k_mdot * p_c
+            return mdot_ox + mdot_fuel - mdot_nozzle
+
+        # Newton-Raphson
+        p_c = min(p_feed_ox, p_feed_fuel) * 0.7  # initial guess
+        for _ in range(50):
+            r = residual(p_c)
+            if abs(r) < 1e-3:  # converged
+                break
+            # Numerical derivative
+            eps = p_c * 1e-6 + 1e-3
+            drdp = (residual(p_c + eps) - r) / eps
+            if abs(drdp) < 1e-12:
+                break
+            p_c = max(0.0, p_c - r / drdp)
+        return float(p_c) if residual(p_c) < 1e-2 else None
 
     def step(self, dt: float) -> Optional[dict]:
         if self.fuel_tank.mass_remaining < 1e-5 or self.ox_tank.mass_remaining < 1e-5:
             return None
 
         p_feed_ox  = self.ox_tank.feed_pressure()
-        p_feed_ipa = p_feed_ox if self.cfg.ipa_uses_n2o_p else self.fuel_tank.feed_pressure()
-        p_c        = min(p_feed_ox, p_feed_ipa) * (1.0 - self._dp_frac)
+        p_feed_fuel = p_feed_ox if self.cfg.ipa_uses_n2o_p else self.fuel_tank.feed_pressure()
 
-        if p_c < self._p_choke:
+        # Solve for chamber pressure
+        p_c = self._solve_chamber_pressure(p_feed_ox, p_feed_fuel)
+        if p_c is None or p_c < self._p_choke:
+            if p_c is None:
+                reason = "could not converge chamber pressure"
+            else:
+                reason = f"nozzle unchoked (Pc={p_c/1e5:.2f} bar < {self._p_choke/1e5:.2f} bar)"
+            self.stop_reason = f"{reason} at t={self.time:.3f} s"
+            return None
+
+        if p_c < self._p_c_sep:
+            p_exit = self._pe_over_pc * p_c
             self.stop_reason = (
-                f"nozzle unchoked at t={self.time:.3f} s "
-                f"(Pc={p_c/1e5:.2f} bar < limit={self._p_choke/1e5:.2f} bar)"
+                f"flow separation at t={self.time:.3f} s "
+                f"(Pe={p_exit/1e5:.3f} bar = {100*p_exit/self.cfg.p_ambient:.1f}% Pa)"
             )
             return None
 
-        mdot      = self._k_mdot * p_c
-        cf        = self._cf_A - self._cf_B / p_c
-        thrust    = cf * p_c * self.A_throat
-        isp       = thrust / (mdot * G0)
-        of        = self._of
-        mdot_fuel = mdot / (1.0 + of)
-        mdot_ox   = mdot * of / (1.0 + of)
+        # Compute mass flow rates
+        dp_ox = max(0.0, p_feed_ox - p_c)
+        dp_fuel = max(0.0, p_feed_fuel - p_c)
+        mdot_ox = self._K_ox * np.sqrt(dp_ox)
+        mdot_fuel = self._K_fuel * np.sqrt(dp_fuel)
+        mdot = mdot_ox + mdot_fuel
 
+        # Actual O/F and combustion properties
+        of_actual = mdot_ox / (mdot_fuel + 1e-12) if mdot_fuel > 1e-6 else 1e6
+        T_c, _, _, cstar_ideal = combustion_props(
+            self.cfg.fuel, of_actual, p_c, self.expansion_ratio
+        )
+        cstar = cstar_ideal * self.cfg.cstar_eta
+
+        # Thrust calculation
+        cf = self._cf_A - self._cf_B / p_c
+        thrust = cf * p_c * self.A_throat
+        isp = thrust / (mdot * G0) if mdot > 0 else 0.0
+
+        # Propellant consumption
+        dm_ox = mdot_ox * dt
         dm_fuel = mdot_fuel * dt
-        dm_ox   = mdot_ox   * dt
         frac = min(
+            self.ox_tank.mass_remaining / (dm_ox + 1e-12),
             self.fuel_tank.mass_remaining / (dm_fuel + 1e-12),
-            self.ox_tank.mass_remaining   / (dm_ox   + 1e-12),
             1.0,
         )
-        dm_fuel *= frac;  dm_ox  *= frac
-        mdot    *= frac;  thrust *= frac
+        dm_ox *= frac;  dm_fuel *= frac
+        mdot *= frac;  thrust *= frac
+        mdot_ox *= frac;  mdot_fuel *= frac
 
-        self.fuel_tank.consume(dm_fuel)
         self.ox_tank.consume(dm_ox)
+        self.fuel_tank.consume(dm_fuel)
         self.time += dt
 
         state = dict(
@@ -586,14 +701,15 @@ class PistonEngine:
             thrust     = thrust,
             isp        = isp,
             mdot       = mdot,
-            mdot_fuel  = mdot_fuel * frac,
-            mdot_ox    = mdot_ox   * frac,
+            mdot_fuel  = mdot_fuel,
+            mdot_ox    = mdot_ox,
             p_chamber  = p_c,
             p_feed_ox  = p_feed_ox,
-            p_feed_ipa = p_feed_ipa,
-            t_chamber  = self._T_c,
+            p_feed_ipa = p_feed_fuel,
+            of_actual  = of_actual,
+            t_chamber  = T_c,
             n2o_temp   = self.ox_tank.T,
-            cstar      = self._cstar,
+            cstar      = cstar,
             cf         = cf,
             fuel_mass  = self.fuel_tank.mass_remaining,
             ox_mass    = self.ox_tank.mass_remaining,
@@ -618,8 +734,7 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     p_sat_0   = _CP('P', 'T', T0, 'Q', 0, N2O_FLUID)
     rho_liq_0 = _CP('D', 'T', T0, 'Q', 0, N2O_FLUID)
     rho_vap_0 = _CP('D', 'T', T0, 'Q', 1, N2O_FLUID)
-    p_choke   = cfg.p_ambient * ((eng._gamma + 1) / 2.0) ** (eng._gamma / (eng._gamma - 1))
-    p_c_init  = p_sat_0 * (1.0 - cfg.injector_dp_frac)
+    p_choke   = cfg.p_ambient * ((eng._gamma_nom + 1) / 2.0) ** (eng._gamma_nom / (eng._gamma_nom - 1))
 
     src = "rocketCEA" if _ROCKETCEA_AVAILABLE else "polynomial fallback"
     sep = "-" * 62
@@ -649,13 +764,16 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
         flag = f"+{ipa_margin/1e6:.3f} MPa margin" if ipa_margin >= 0 else \
                f"{ipa_margin/1e6:.3f} MPa  ** BELOW N2O P_sat **"
         print(f"    vs N2O P_sat         : {flag}")
-    print(f"  Combustion (at design O/F)")
-    print(f"    Chamber temperature  : {eng._T_c:.0f} K")
-    print(f"    Exhaust gamma        : {eng._gamma:.4f}")
-    print(f"    c* (w/ eta)          : {eng._cstar:.0f} m/s")
-    print(f"  Initial chamber pressure: {p_c_init/1e6:.3f} MPa  ({p_c_init/6894.76:.0f} psi)")
-    print(f"  Nozzle unchoke limit    : {p_choke/1e5:.3f} bar")
-    print(f"  O/F ratio               : {cfg.of_ratio:.2f}  "
+    print(f"  Combustion (design point)")
+    print(f"    Chamber temperature  : {eng._T_c_nom:.0f} K")
+    print(f"    Exhaust gamma        : {eng._gamma_nom:.4f}")
+    print(f"    c* (w/ eta)          : {eng._cstar_nom:.0f} m/s")
+    print(f"  Injector geometry")
+    print(f"    N2O area × Cd        : {cfg.A_inj_ox*1e6:.2f} mm² × {cfg.cd_ox:.3f}")
+    print(f"    Fuel area × Cd       : {cfg.A_inj_fuel*1e6:.2f} mm² × {cfg.cd_fuel:.3f}")
+    print(f"  Nozzle unchoke limit    : {p_choke/1e5:.3f} bar  (Pc at which throat goes subsonic)")
+    print(f"  Flow separation limit   : {eng._p_c_sep/1e5:.3f} bar  (Pe < 40% Pa, Summerfield)")
+    print(f"  Design O/F ratio        : {cfg.of_ratio:.2f}  "
           f"(stoich = {cfg.fuel.of_stoich:.2f})")
     print(f"  Throat / exit           : {cfg.throat_diam*1000:.1f} mm / "
           f"{cfg.exit_diam*1000:.1f} mm  (eps={eng.expansion_ratio:.2f})")
@@ -751,7 +869,7 @@ def plot_results(hist: dict, title: str = ""):
 def of_sweep(cfg: EngineConfig, of_range=(3.0, 9.0, 25)):
     ofs   = np.linspace(*of_range)
     p_sat = _CP('P', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
-    p_c   = p_sat * (1.0 - cfg.injector_dp_frac)
+    p_c   = p_sat * 0.8  # reference chamber pressure for sweep
     A_t   = np.pi / 4.0 * cfg.throat_diam ** 2
     eps   = (cfg.exit_diam / cfg.throat_diam) ** 2
 
