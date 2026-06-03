@@ -36,6 +36,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+plt.style.use('ggplot')
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from dataclasses import dataclass
@@ -452,6 +453,70 @@ class PistonTank:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#   Feed line hydraulic model
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class FeedLine:
+    """
+    Hydraulic model for a feed line (hose/pipe + in-line valve), all in CdA terms.
+
+    Pipe CdA from Darcy-Weisbach (density cancels exactly):
+      CdA_pipe = A / √(f · L/D)   where f = fully-turbulent Colebrook-White limit
+
+    Series combination with valve:
+      1/CdA_eff² = 1/CdA_pipe² + 1/CdA_valve²
+
+    f = 0.25 / [log₁₀(ε/3.7D)]²  — Re-independent (Moody chart fully-rough asymptote).
+    Valid when Re > ~3500·(D/ε); holds well at propellant flow rates.
+    """
+    inner_diam : float = 0.0      # pipe/hose inner diameter [m]; 0 = no feed line
+    length     : float = 0.0      # total pipe/hose length [m]
+    roughness  : float = 1.5e-6   # absolute wall roughness [m] (smooth drawn tube default)
+    valve_Cd   : float = 0.0      # valve discharge coefficient [-]; 0 = no valve loss
+    valve_diam : float = 0.0      # valve bore diameter [m]
+
+    def friction_factor(self) -> float:
+        """Fully-turbulent Colebrook-White: 1/√f = −2·log₁₀(ε/3.7D)"""
+        if self.inner_diam <= 0 or self.roughness <= 0:
+            return 0.02
+        return 0.25 / np.log10(self.roughness / (3.7 * self.inner_diam)) ** 2
+
+    @property
+    def valve_cda(self) -> float:
+        """Valve CdA [m²] alone (Cd × bore area). 0 if no valve configured."""
+        if self.valve_Cd > 0 and self.valve_diam > 0:
+            return self.valve_Cd * np.pi / 4 * self.valve_diam ** 2
+        return 0.0
+
+    def CdA(self) -> float:
+        """Effective CdA [m²] for the pipe + valve in series. Returns 0 if unconfigured."""
+        if self.inner_diam <= 0:
+            return 0.0
+        A = np.pi / 4 * self.inner_diam ** 2
+        inv_sq = 0.0
+        if self.length > 0:
+            CdA_pipe = A / np.sqrt(self.friction_factor() * self.length / self.inner_diam)
+            inv_sq += 1.0 / CdA_pipe ** 2
+        if self.valve_cda > 0:
+            inv_sq += 1.0 / self.valve_cda ** 2
+        return 1.0 / np.sqrt(inv_sq) if inv_sq > 0 else 0.0
+
+    def summary(self) -> str:
+        cda = self.CdA()
+        parts = []
+        if self.inner_diam > 0:
+            parts.append(f"ID={self.inner_diam*1e3:.2f} mm")
+        if self.length > 0:
+            parts.append(f"L={self.length*1e3:.0f} mm  f={self.friction_factor():.4f}")
+        if self.valve_Cd > 0 and self.valve_diam > 0:
+            CdA_v = self.valve_Cd * np.pi / 4 * self.valve_diam ** 2
+            parts.append(f"valve {self.valve_diam*1e3:.2f} mm × Cd {self.valve_Cd:.3f} = CdA {CdA_v*1e6:.3f} mm²")
+        desc = "  ".join(parts) if parts else "none"
+        return f"{desc}  →  CdA={cda*1e6:.3f} mm²" if cda > 0 else "none"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #   Engine configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -460,20 +525,36 @@ class EngineConfig:
     # N2O oxidiser
     ox_mass          : float         = 3.7    # kg
     ox_tank_volume   : float         = 8.0e-3  # m^3
-    n2o_init_temp_K  : float         = 273.0   # K  (0 C)
+    n2o_init_temp_K  : float         = 283.15  # K  (50 F / 10 C, HalfCatSim default)
     n2o_isothermal   : bool          = False
 
     # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
-    cd_ox        : float          = 0.65    # discharge coefficient, N2O orifice(s)
-    cd_fuel      : float          = 0.65    # discharge coefficient, fuel orifice(s)
-    A_inj_ox     : Optional[float] = None   # total N2O injector area [m^2]
-    A_inj_fuel   : Optional[float] = None   # total fuel injector area [m^2]
+    # Cd values match HalfCatSim hardware; areas solved analytically to hit
+    # Pc=218.6 psi and O/F=2.77 at 283.15 K N2O with 15 psi piston loss.
+    cd_ox        : float          = 0.40    # discharge coefficient, N2O orifice(s)
+    cd_fuel      : float          = 0.55    # discharge coefficient, fuel orifice(s)
+    A_inj_ox     : Optional[float] = 19.68e-6   # total N2O injector area [m^2]
+    A_inj_fuel   : Optional[float] = 5.538e-6   # total fuel injector area [m^2]
     inj_target_dp: float          = 0.20    # dP/P_feed fraction used for auto-sizing
 
+    # Oxidiser (N2O) feed line  — pipe geometry + in-line valve
+    ox_line_id       : float = 7.94e-3  # inner diameter [m];  0 = no feed-line loss
+    ox_line_length   : float = 0.304    # total length [m]
+    ox_line_roughness: float = 1.5e-6   # wall roughness [m]  (smooth drawn tube default)
+    ox_valve_Cd      : float = 0.8      # valve discharge coefficient [-];  0 = no valve
+    ox_valve_diam    : float = 0.01     # valve bore diameter [m]
+
+    # Fuel feed line  — pipe geometry + in-line valve
+    fuel_line_id       : float = 5.715e-3
+    fuel_line_length   : float = 1.219
+    fuel_line_roughness: float = 1.5e-6
+    fuel_valve_Cd      : float = 0.8
+    fuel_valve_diam    : float = 0.01
+
     # O/F and fuel
-    of_ratio         : float         = 2.7
+    of_ratio         : float         = 2.77
     fuel             : Optional[Fuel] = None    # None -> IPA in __post_init__
-    cstar_eta        : float         = 0.94
+    cstar_eta        : float         = 0.65
     nozzle_eta       : float         = 0.97
 
     # Fuel tank  (None = auto-computed in __post_init__)
@@ -485,6 +566,7 @@ class EngineConfig:
     ipa_pressurant_p : float = 6.0e6
     ipa_blowdown     : bool  = True
     ipa_polytropic_n : float = 1.0
+    piston_dp        : float = 103_421.0  # piston seal pressure loss [Pa] (15 psi, HalfCatSim)
 
     # Nozzle geometry
     throat_diam      : float = 0.0254   # m
@@ -492,7 +574,7 @@ class EngineConfig:
     exit_diam        : float = throat_diam*AeAt**0.5
 
     # Environment
-    p_ambient        : float = ATM
+    p_ambient        : float = 94_197.0  # Pa  (2000 ft / 13.664 psi, HalfCatSim default)
 
     def __post_init__(self):
         if self.fuel is None:
@@ -554,14 +636,6 @@ class PistonEngine:
             T_init     = cfg.n2o_init_temp_K,
             isothermal = cfg.n2o_isothermal,
         )
-        self.fuel_tank = PistonTank(
-            propellant_mass     = cfg.fuel_mass,
-            propellant_density  = cfg.fuel.liquid_density(),
-            tank_volume         = cfg.fuel_tank_volume,
-            pressurant_pressure = cfg.ipa_pressurant_p,
-            blowdown            = cfg.ipa_blowdown,
-            polytropic_n        = cfg.ipa_polytropic_n,
-        )
 
         self.time        = 0.0
         self.stop_reason = "propellant exhausted"
@@ -572,6 +646,28 @@ class PistonEngine:
         rho_fuel_nom = cfg.fuel.liquid_density()
         self._K_ox   = cfg.cd_ox * cfg.A_inj_ox * np.sqrt(2.0 * rho_ox_nom)
         self._K_fuel = cfg.cd_fuel * cfg.A_inj_fuel * np.sqrt(2.0 * rho_fuel_nom)
+
+        # Build FeedLine objects from flat config params and fold into effective K
+        self._feedline_ox = FeedLine(
+            inner_diam=cfg.ox_line_id,   length=cfg.ox_line_length,
+            roughness=cfg.ox_line_roughness,
+            valve_Cd=cfg.ox_valve_Cd,    valve_diam=cfg.ox_valve_diam,
+        )
+        self._feedline_fuel = FeedLine(
+            inner_diam=cfg.fuel_line_id, length=cfg.fuel_line_length,
+            roughness=cfg.fuel_line_roughness,
+            valve_Cd=cfg.fuel_valve_Cd,  valve_diam=cfg.fuel_valve_diam,
+        )
+        # Series combination: 1/K_eff^2 = 1/K_inj^2 + 1/K_line^2
+        for fl, attr, rho in [
+            (self._feedline_ox,   '_K_ox',   rho_ox_nom),
+            (self._feedline_fuel, '_K_fuel', rho_fuel_nom),
+        ]:
+            cda = fl.CdA()
+            if cda > 0:
+                K_line = cda * np.sqrt(2.0 * rho)
+                K_inj  = getattr(self, attr)
+                setattr(self, attr, 1.0 / np.sqrt(1/K_inj**2 + 1/K_line**2))
 
         # ── Nozzle constants (O/F varies; use a reference design point for gamma) ──
         of_ref = cfg.of_ratio
@@ -597,6 +693,34 @@ class PistonEngine:
         self._T_c_nom   = T_c
         self._gamma_nom = gamma
         self._p_choke   = cfg.p_ambient * ((gamma + 1) / 2.0) ** (gamma / (gamma - 1))
+
+        # ── Balance fuel mass to actual injector O/F ──────────────────────────────
+        # cfg.of_ratio sizes cfg.fuel_mass, but the piston pressure drop (and any
+        # feed-line losses) shift the actual O/F.  Solve for the initial Pc, compute
+        # the true O/F from injector flows, then size fuel_mass to match so both
+        # propellants run out simultaneously.
+        p_sat_0    = _CP('P', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
+        p_feed_f_0 = (p_sat_0 - cfg.piston_dp
+                      if cfg.ipa_uses_n2o_p else cfg.ipa_pressurant_p)
+        p_c_0 = self._solve_chamber_pressure(p_sat_0, p_feed_f_0) or p_sat_0 * 0.4
+        dp_ox_0    = max(0.0, p_sat_0    - p_c_0)
+        dp_fuel_0  = max(0.0, p_feed_f_0 - p_c_0)
+        actual_of  = (self._K_ox * np.sqrt(dp_ox_0)
+                      / (self._K_fuel * np.sqrt(dp_fuel_0) + 1e-30))
+        # Use m_liq (liquid only) — vapour stays as pressurant and never flows out
+        fuel_mass_balanced = self.ox_tank.m_liq / actual_of
+        fuel_tank_vol = (cfg.fuel_tank_volume
+                         or fuel_mass_balanced / rho_fuel_nom * 1.05)
+
+        self._actual_of_init = actual_of
+        self.fuel_tank = PistonTank(
+            propellant_mass     = fuel_mass_balanced,
+            propellant_density  = rho_fuel_nom,
+            tank_volume         = fuel_tank_vol,
+            pressurant_pressure = cfg.ipa_pressurant_p,
+            blowdown            = cfg.ipa_blowdown,
+            polytropic_n        = cfg.ipa_polytropic_n,
+        )
 
         self.hist: dict[str, list] = {k: [] for k in [
             't', 'thrust', 'isp', 'mdot', 'mdot_fuel', 'mdot_ox',
@@ -641,7 +765,9 @@ class PistonEngine:
             return None
 
         p_feed_ox  = self.ox_tank.feed_pressure()
-        p_feed_fuel = p_feed_ox if self.cfg.ipa_uses_n2o_p else self.fuel_tank.feed_pressure()
+        p_feed_fuel = (p_feed_ox - self.cfg.piston_dp
+                       if self.cfg.ipa_uses_n2o_p
+                       else self.fuel_tank.feed_pressure())
 
         # Solve for chamber pressure
         p_c = self._solve_chamber_pressure(p_feed_ox, p_feed_fuel)
@@ -768,9 +894,20 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     print(f"    Chamber temperature  : {eng._T_c_nom:.0f} K")
     print(f"    Exhaust gamma        : {eng._gamma_nom:.4f}")
     print(f"    c* (w/ eta)          : {eng._cstar_nom:.0f} m/s")
-    print(f"  Injector geometry")
-    print(f"    N2O area × Cd        : {cfg.A_inj_ox*1e6:.2f} mm² × {cfg.cd_ox:.3f}")
-    print(f"    Fuel area × Cd       : {cfg.A_inj_fuel*1e6:.2f} mm² × {cfg.cd_fuel:.3f}")
+    fl_ox   = eng._feedline_ox
+    fl_fuel = eng._feedline_fuel
+    print(f"  Feed lines")
+    print(f"    N2O  : {fl_ox.summary()}")
+    if fl_ox.valve_cda > 0:
+        print(f"           valve CdA = {fl_ox.valve_cda*1e6:.3f} mm²")
+    print(f"    Fuel : {fl_fuel.summary()}")
+    if fl_fuel.valve_cda > 0:
+        print(f"           valve CdA = {fl_fuel.valve_cda*1e6:.3f} mm²")
+    print(f"  Injectors")
+    print(f"    N2O  : A={cfg.A_inj_ox*1e6:.2f} mm²  Cd={cfg.cd_ox:.3f}  "
+          f"CdA={cfg.cd_ox*cfg.A_inj_ox*1e6:.3f} mm²")
+    print(f"    Fuel : A={cfg.A_inj_fuel*1e6:.2f} mm²  Cd={cfg.cd_fuel:.3f}  "
+          f"CdA={cfg.cd_fuel*cfg.A_inj_fuel*1e6:.3f} mm²")
     print(f"  Nozzle unchoke limit    : {p_choke/1e5:.3f} bar  (Pc at which throat goes subsonic)")
     print(f"  Flow separation limit   : {eng._p_c_sep/1e5:.3f} bar  (Pe < 40% Pa, Summerfield)")
     print(f"  Design O/F ratio        : {cfg.of_ratio:.2f}  "
@@ -810,10 +947,27 @@ def print_summary(hist: dict, stop_reason: str = "propellant exhausted"):
     print(sep)
 
 
-def plot_results(hist: dict, title: str = ""):
+def _nice_ceil(x: float) -> float:
+    """Round x up to the nearest 1/2/5 × power-of-10."""
+    import math
+    if x <= 0:
+        return 1.0
+    e   = math.floor(math.log10(x))
+    mag = 10 ** e
+    f   = x / mag          # in [1, 10)
+    if f <= 1:   return      mag
+    if f <= 2:   return  2 * mag
+    if f <= 5:   return  5 * mag
+    return 10 * mag
+
+
+def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
+    # Drop the final datapoint — it's often a partial step with a sudden drop
+    hist = {k: v[:-1] if len(v) > 1 else v for k, v in hist.items()}
     t = hist['t']
+    fuel_label = f"{fuel_name} (fuel)"
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
-    fig.suptitle(f"N2O / fuel piston rocket{'  |  ' + title if title else ''}",
+    fig.suptitle(f"{title if title else ''}",
                  fontsize=13, fontweight='bold')
 
     # ── Simple single-series panels ───────────────────────────────────────────
@@ -834,6 +988,8 @@ def plot_results(hist: dict, title: str = ""):
         if zero_origin:
             ax.set_ylim(bottom=0)
 
+    axes[0, 0].set_ylim(top=_nice_ceil(max(hist['thrust'])))
+
     # ── Combined pressure panel ───────────────────────────────────────────────
     ax_p = axes[0, 2]
     ax_p.plot(t, [p/1e6 for p in hist['p_feed_ox']], color='tab:orange', lw=1.8, label='Feed')
@@ -845,12 +1001,12 @@ def plot_results(hist: dict, title: str = ""):
     ax_m = axes[1, 0]
     ax_m.plot(t, hist['mdot'],      color='tab:purple',  lw=1.8, label='Total')
     ax_m.plot(t, hist['mdot_ox'],   color='orangered',   lw=1.3, ls='--', label='N2O (ox)')
-    ax_m.plot(t, hist['mdot_fuel'], color='steelblue',   lw=1.3, ls='--', label='Fuel')
+    ax_m.plot(t, hist['mdot_fuel'], color='steelblue',   lw=1.3, ls='--', label=fuel_label)
     ax_m.set_xlabel('Time (s)'); ax_m.set_ylabel('Mass Flow (kg/s)'); ax_m.set_title('Mass Flows')
     ax_m.legend(fontsize=8); ax_m.grid(True, alpha=0.3); ax_m.set_ylim(bottom=0)
 
     # ── Propellant remaining species overlay ──────────────────────────────────
-    axes[1, 2].plot(t, hist['fuel_mass'], '--', color='steelblue', lw=1.3, label='Fuel')
+    axes[1, 2].plot(t, hist['fuel_mass'], '--', color='steelblue', lw=1.3, label=fuel_label)
     axes[1, 2].plot(t, hist['ox_mass'],   '--', color='orangered', lw=1.3, label='N2O liq')
     axes[1, 2].legend(fontsize=8)
 
@@ -964,7 +1120,8 @@ def main():
     print_summary(hist, engine.stop_reason)
 
     if hist['t']:
-        plot_results(hist, title=f"N2O/{cfg.fuel.name}  O/F={cfg.of_ratio}  {mode}")
+        plot_results(hist, title=f"N2O/{cfg.fuel.name}  O/F={cfg.of_ratio}  {mode}",
+                     fuel_name=cfg.fuel.name)
 
 
 if __name__ == "__main__":
