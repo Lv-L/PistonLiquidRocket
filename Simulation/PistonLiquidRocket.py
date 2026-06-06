@@ -26,7 +26,6 @@ Supported fuels  (pass via --fuel or EngineConfig.fuel)
 Usage
   python PistonLiquidRocket.py                         # default config
   python PistonLiquidRocket.py --fuel Ethanol          # switch fuel
-  python PistonLiquidRocket.py --n2o-isothermal        # constant N2O temperature
   python PistonLiquidRocket.py --sweep                 # O/F sensitivity sweep
 """
 
@@ -358,12 +357,10 @@ class N2OSelfPressTank:
     T_new found via vectorised searchsorted over the pre-built property table.
     """
 
-    def __init__(self, mass: float, volume: float,
-                 T_init: float = 293.0, isothermal: bool = False):
-        self.volume     = volume
-        self.T          = float(T_init)
-        self.isothermal = isothermal
-        self._tbl       = _get_table()
+    def __init__(self, mass: float, volume: float, T_init: float = 293.0):
+        self.volume = volume
+        self.T      = float(T_init)
+        self._tbl   = _get_table()
 
         rho_liq, rho_vap, *_ = self._tbl.at(T_init)
         denom = 1.0/rho_liq - 1.0/rho_vap
@@ -396,14 +393,9 @@ class N2OSelfPressTank:
         if dm <= 0:
             return
         tbl = self._tbl
-        rho_liq, rho_vap, u_liq, u_vap, h_liq, _ = tbl.at(self.T)
+        _, _, u_liq, u_vap, h_liq, _ = tbl.at(self.T)
         U_target  = self.m_liq * u_liq + self.m_vap * u_vap - h_liq * dm
         m_liq_new = self.m_liq - dm
-
-        if self.isothermal:
-            self.m_liq = m_liq_new
-            self.m_vap = rho_vap * (self.volume - m_liq_new / rho_liq)
-            return
 
         T_new       = tbl.find_T_for_U(U_target, m_liq_new, self.volume)
         rho_liq_new = float(np.interp(T_new, tbl.T, tbl.rho_liq))
@@ -522,19 +514,20 @@ class FeedLine:
 
 @dataclass
 class EngineConfig:
-    # N2O oxidiser
-    ox_mass          : float         = 3.7    # kg
-    ox_tank_volume   : float         = 8.0e-3  # m^3
+    # N2O oxidiser  (ox_mass, fuel_mass, fuel_tank_volume are always computed in __post_init__)
+    ox_tank_volume   : float         = 3.0e-3  # m^3
+    ox_tank_diam     : float         = 0.0952  # m  (cylindrical tank inner diameter)
+    ox_ullage        : float         = 0.05    # initial vapour volume fraction [-]
     n2o_init_temp_K  : float         = 283.15  # K  (50 F / 10 C, HalfCatSim default)
-    n2o_isothermal   : bool          = False
+
 
     # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
     # Cd values match HalfCatSim hardware; areas solved analytically to hit
     # Pc=218.6 psi and O/F=2.77 at 283.15 K N2O with 15 psi piston loss.
     cd_ox        : float          = 0.40    # discharge coefficient, N2O orifice(s)
     cd_fuel      : float          = 0.55    # discharge coefficient, fuel orifice(s)
-    A_inj_ox     : Optional[float] = 19.68e-6   # total N2O injector area [m^2]
-    A_inj_fuel   : Optional[float] = 5.538e-6   # total fuel injector area [m^2]
+    A_inj_ox     : Optional[float] = None   # total N2O injector area [m^2]
+    A_inj_fuel   : Optional[float] = None   # total fuel injector area [m^2]
     inj_target_dp: float          = 0.20    # dP/P_feed fraction used for auto-sizing
 
     # Oxidiser (N2O) feed line  — pipe geometry + in-line valve
@@ -552,14 +545,13 @@ class EngineConfig:
     fuel_valve_diam    : float = 0.01
 
     # O/F and fuel
-    of_ratio         : float         = 2.77
+    of_ratio         : float          = 2.77
     fuel             : Optional[Fuel] = None    # None -> IPA in __post_init__
-    cstar_eta        : float         = 0.65
-    nozzle_eta       : float         = 0.97
+    cstar_eta        : float          = 0.65
+    nozzle_eta       : float          = 0.97
 
-    # Fuel tank  (None = auto-computed in __post_init__)
-    fuel_mass        : Optional[float] = None
-    fuel_tank_volume : Optional[float] = None
+    # Fuel tank
+    fuel_tank_diam   : float          = ox_tank_diam   # m  (cylindrical tank inner diameter)
 
     # IPA piston pressurant
     ipa_uses_n2o_p   : bool  = True
@@ -579,12 +571,20 @@ class EngineConfig:
     def __post_init__(self):
         if self.fuel is None:
             self.fuel = IPA
-        if self.fuel_mass is None:
-            self.fuel_mass = self.ox_mass / self.of_ratio
-        if self.fuel_tank_volume is None:
-            density  = self.fuel.liquid_density()
-            headspace = 1.05 if self.ipa_uses_n2o_p else 1.25
-            self.fuel_tank_volume = self.fuel_mass / density * headspace
+
+        rho_liq_0 = _CP('D', 'T', self.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
+        rho_vap_0 = _CP('D', 'T', self.n2o_init_temp_K, 'Q', 1, N2O_FLUID)
+        self.ox_mass = (rho_liq_0 * (1.0 - self.ox_ullage)
+                        + rho_vap_0 * self.ox_ullage) * self.ox_tank_volume
+        self.fuel_mass = self.ox_mass / self.of_ratio
+        headspace = 1.05 if self.ipa_uses_n2o_p else 1.25
+        self.fuel_tank_volume = self.fuel_mass / self.fuel.liquid_density() * headspace
+
+        # Tank lengths derived from volume and diameter (cylindrical assumption)
+        _ox_A   = np.pi / 4.0 * self.ox_tank_diam ** 2
+        _fuel_A = np.pi / 4.0 * self.fuel_tank_diam ** 2
+        self.ox_tank_length   = self.ox_tank_volume   / _ox_A
+        self.fuel_tank_length = self.fuel_tank_volume / _fuel_A
 
         # Auto-size injector areas if not provided.
         # Uses design O/F and target dP to size both injectors proportionally.
@@ -597,7 +597,7 @@ class EngineConfig:
             A_t = np.pi / 4.0 * self.throat_diam ** 2
             _, _, _, cstar_nom = combustion_props(self.fuel, self.of_ratio, p_c_nom,
                                                    (self.exit_diam / self.throat_diam)**2)
-            cstar = cstar_nom * 0.94
+            cstar = cstar_nom * self.cstar_eta
             k_mdot_nozzle = A_t / cstar
             mdot_nozzle_nom = k_mdot_nozzle * p_c_nom
 
@@ -607,13 +607,16 @@ class EngineConfig:
 
             # Orifice equation: ṁ = Cd * A * √(2 * ρ * ΔP)
             # Solve for A: A = ṁ / (Cd * √(2 * ρ * ΔP))
-            dp_nom = p_sat_0 * self.inj_target_dp
+            # Fuel feed pressure is lower than N2O by the piston pressure drop.
+            dp_ox_nom   = p_sat_0 * self.inj_target_dp
+            dp_fuel_nom = (dp_ox_nom - self.piston_dp
+                           if self.ipa_uses_n2o_p else dp_ox_nom)
             if self.A_inj_ox is None:
                 self.A_inj_ox = mdot_ox_nom / (
-                    self.cd_ox * np.sqrt(2.0 * rho_ox * dp_nom) + 1e-12)
+                    self.cd_ox * np.sqrt(2.0 * rho_ox * dp_ox_nom) + 1e-12)
             if self.A_inj_fuel is None:
                 self.A_inj_fuel = mdot_fuel_nom / (
-                    self.cd_fuel * np.sqrt(2.0 * rho_fuel * dp_nom) + 1e-12)
+                    self.cd_fuel * np.sqrt(2.0 * rho_fuel * dp_fuel_nom) + 1e-12)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -631,10 +634,9 @@ class PistonEngine:
         self.expansion_ratio = A_e / A_t
 
         self.ox_tank = N2OSelfPressTank(
-            mass       = cfg.ox_mass,
-            volume     = cfg.ox_tank_volume,
-            T_init     = cfg.n2o_init_temp_K,
-            isothermal = cfg.n2o_isothermal,
+            mass   = cfg.ox_mass,
+            volume = cfg.ox_tank_volume,
+            T_init = cfg.n2o_init_temp_K,
         )
 
         self.time        = 0.0
@@ -709,8 +711,7 @@ class PistonEngine:
                       / (self._K_fuel * np.sqrt(dp_fuel_0) + 1e-30))
         # Use m_liq (liquid only) — vapour stays as pressurant and never flows out
         fuel_mass_balanced = self.ox_tank.m_liq / actual_of
-        fuel_tank_vol = (cfg.fuel_tank_volume
-                         or fuel_mass_balanced / rho_fuel_nom * 1.05)
+        fuel_tank_vol = cfg.fuel_tank_volume
 
         self._actual_of_init = actual_of
         self.fuel_tank = PistonTank(
@@ -874,13 +875,19 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     print(f"    Saturation pressure  : {p_sat_0/1e6:.3f} MPa  ({p_sat_0/6894.76:.0f} psi)")
     print(f"    Liquid density       : {rho_liq_0:.1f} kg/m^3")
     print(f"    Vapour density       : {rho_vap_0:.1f} kg/m^3")
+    V_vap_init = eng.ox_tank.m_vap / _CP('D', 'T', T0, 'Q', 1, N2O_FLUID)
+    ullage_pct = 100.0 * V_vap_init / cfg.ox_tank_volume
     print(f"    Liquid / vapour mass : {eng.ox_tank.m_liq:.3f} kg  /  {eng.ox_tank.m_vap:.3f} kg")
-    print(f"    Thermal model        : "
-          f"{'isothermal' if cfg.n2o_isothermal else 'adiabatic (T drops as liquid drains)'}")
+    print(f"    Ullage (vapour vol)  : {ullage_pct:.1f}%  ({V_vap_init*1e3:.2f} L vapour)")
+    print(f"    Volume / diameter    : {cfg.ox_tank_volume*1e3:.2f} L  /  {cfg.ox_tank_diam*1e3:.0f} mm")
+    print(f"    Length               : {cfg.ox_tank_length*1e3:.0f} mm")
+    print(f"    Thermal model        : adiabatic (T drops as liquid drains)")
     print(f"  {cfg.fuel.name} fuel tank  (piston)")
     print(f"    Density              : {cfg.fuel.liquid_density():.1f} kg/m^3"
           f"  (CoolProp)" if cfg.fuel.coolprop_name else "    Density              : "
           f"{cfg.fuel.liquid_density():.1f} kg/m^3  (reference value)")
+    print(f"    Volume / diameter    : {cfg.fuel_tank_volume*1e3:.2f} L  /  {cfg.fuel_tank_diam*1e3:.0f} mm")
+    print(f"    Length               : {cfg.fuel_tank_length*1e3:.0f} mm")
     if cfg.ipa_uses_n2o_p:
         print(f"    Pressurant           : N2O vapour space (always equal to N2O feed P)")
     else:
@@ -946,21 +953,6 @@ def print_summary(hist: dict, stop_reason: str = "propellant exhausted"):
     print(f"  Stopped by          : {stop_reason}")
     print(sep)
 
-
-def _nice_ceil(x: float) -> float:
-    """Round x up to the nearest 1/2/5 × power-of-10."""
-    import math
-    if x <= 0:
-        return 1.0
-    e   = math.floor(math.log10(x))
-    mag = 10 ** e
-    f   = x / mag          # in [1, 10)
-    if f <= 1:   return      mag
-    if f <= 2:   return  2 * mag
-    if f <= 5:   return  5 * mag
-    return 10 * mag
-
-
 def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
     # Drop the final datapoint — it's often a partial step with a sudden drop
     hist = {k: v[:-1] if len(v) > 1 else v for k, v in hist.items()}
@@ -973,22 +965,20 @@ def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
     # ── Simple single-series panels ───────────────────────────────────────────
     panels = [
         (axes[0, 0], hist['thrust'],
-         'Thrust (N)',      'Thrust',               'tab:red',   True),
+         'Thrust (N)',      'Thrust',               'tab:red',   True,  None),
         (axes[0, 1], hist['isp'],
-         'Isp (s)',         'Specific Impulse',     'tab:blue',  False),
+         'Isp (s)',         'Specific Impulse',     'tab:blue',  False, None),
         (axes[1, 1], [T - 273.15 for T in hist['n2o_temp']],
-         'Temperature (C)', 'N2O Tank Temperature', 'tab:cyan',  False),
+         'Temperature (C)', 'N2O Tank Temperature', 'tab:cyan',  False, None),
         (axes[1, 2], [f + o for f, o in zip(hist['fuel_mass'], hist['ox_mass'])],
-         'Propellant (kg)', 'Propellant Remaining', 'tab:brown', True),
+         'Propellant (kg)', 'Propellant Remaining', 'tab:green', True, "Total"),
     ]
-    for ax, data, ylabel, title_ax, color, zero_origin in panels:
-        ax.plot(t, data, color=color, linewidth=1.8)
+    for ax, data, ylabel, title_ax, color, zero_origin, label in panels:
+        ax.plot(t, data, label=label, color=color, linewidth=1.8)
         ax.set_xlabel('Time (s)'); ax.set_ylabel(ylabel); ax.set_title(title_ax)
         ax.grid(True, alpha=0.3)
         if zero_origin:
             ax.set_ylim(bottom=0)
-
-    axes[0, 0].set_ylim(top=_nice_ceil(max(hist['thrust'])))
 
     # ── Combined pressure panel ───────────────────────────────────────────────
     ax_p = axes[0, 2]
@@ -999,15 +989,15 @@ def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
 
     # ── Combined mass flow panel ──────────────────────────────────────────────
     ax_m = axes[1, 0]
-    ax_m.plot(t, hist['mdot'],      color='tab:purple',  lw=1.8, label='Total')
+    ax_m.plot(t, hist['mdot'],      color='tab:green',   lw=1.8, label='Total')
     ax_m.plot(t, hist['mdot_ox'],   color='orangered',   lw=1.3, ls='--', label='N2O (ox)')
     ax_m.plot(t, hist['mdot_fuel'], color='steelblue',   lw=1.3, ls='--', label=fuel_label)
     ax_m.set_xlabel('Time (s)'); ax_m.set_ylabel('Mass Flow (kg/s)'); ax_m.set_title('Mass Flows')
     ax_m.legend(fontsize=8); ax_m.grid(True, alpha=0.3); ax_m.set_ylim(bottom=0)
 
     # ── Propellant remaining species overlay ──────────────────────────────────
+    axes[1, 2].plot(t, hist['ox_mass'],   '--', color='orangered', lw=1.3, label='N2O (ox)')
     axes[1, 2].plot(t, hist['fuel_mass'], '--', color='steelblue', lw=1.3, label=fuel_label)
-    axes[1, 2].plot(t, hist['ox_mass'],   '--', color='orangered', lw=1.3, label='N2O liq')
     axes[1, 2].legend(fontsize=8)
 
     plt.tight_layout()
@@ -1070,8 +1060,6 @@ def main():
     )
     parser.add_argument('--sweep',          action='store_true',
                         help='Run O/F sensitivity sweep')
-    parser.add_argument('--n2o-isothermal', action='store_true',
-                        help='N2O isothermal (T fixed, P_sat constant)')
     parser.add_argument('--fuel', choices=list(FUELS.keys()), default=None,
                         help=f'Fuel choice: {list(FUELS.keys())}  (overrides EngineConfig default)')
     parser.add_argument('--n2o-temp',  type=float, default=None,
@@ -1082,6 +1070,8 @@ def main():
                         help='Separate fuel pressurant pressure [MPa]')
     parser.add_argument('--regulated', action='store_true',
                         help='Separate pressurant regulated (constant)')
+    parser.add_argument('--ox-ullage', type=float, default=None,
+                        help='Initial N2O vapour volume fraction [0–1]  (default 0.05)')
     parser.add_argument('--of',  type=float, default=None,
                         help='O/F ratio  (overrides EngineConfig default)')
     parser.add_argument('--dt',  type=float, default=0.01,
@@ -1089,13 +1079,13 @@ def main():
     args = parser.parse_args()
 
     overrides: dict = {}
-    if args.of       is not None: overrides['of_ratio']         = args.of
-    if args.n2o_temp is not None: overrides['n2o_init_temp_K']  = args.n2o_temp + 273.15
-    if args.ipa_pc   is not None: overrides['ipa_pressurant_p'] = args.ipa_pc * 1e6
-    if args.fuel     is not None: overrides['fuel']             = FUELS[args.fuel]
+    if args.of        is not None: overrides['of_ratio']         = args.of
+    if args.n2o_temp  is not None: overrides['n2o_init_temp_K']  = args.n2o_temp + 273.15
+    if args.ipa_pc    is not None: overrides['ipa_pressurant_p'] = args.ipa_pc * 1e6
+    if args.fuel      is not None: overrides['fuel']             = FUELS[args.fuel]
+    if args.ox_ullage is not None: overrides['ox_ullage']        = args.ox_ullage
 
     cfg = EngineConfig(
-        n2o_isothermal   = args.n2o_isothermal,
         ipa_uses_n2o_p   = not args.separate_ipa_press,
         ipa_blowdown     = not args.regulated,
         **overrides,
@@ -1112,15 +1102,14 @@ def main():
         print("\n  Running O/F sweep...")
         of_sweep(cfg)
 
-    mode = "isothermal" if cfg.n2o_isothermal else "adiabatic"
-    print(f"\n  Simulating (N2O {mode}, fuel={cfg.fuel.name}, dt={args.dt} s)...")
+    print(f"\n  Simulating (N2O adiabatic, fuel={cfg.fuel.name}, dt={args.dt} s)...")
     t0   = time.perf_counter()
     hist = engine.run(dt=args.dt)
     print(f"  Run complete in {time.perf_counter() - t0:.3f} s  ({len(hist['t'])} steps)")
     print_summary(hist, engine.stop_reason)
 
     if hist['t']:
-        plot_results(hist, title=f"N2O/{cfg.fuel.name}  O/F={cfg.of_ratio}  {mode}",
+        plot_results(hist, title=f"N2O/{cfg.fuel.name}  O/F={cfg.of_ratio}",
                      fuel_name=cfg.fuel.name)
 
 
