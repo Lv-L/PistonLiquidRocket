@@ -254,12 +254,27 @@ fuel ACETONE  C 3 H 6 O 1   wt%=100.
     mw_exh_a=20.4, mw_exh_b=1.16, gamma_a=1.225, gamma_b=0.006,
 )
 
+DIESEL = Fuel(
+    name='Diesel', cea_name='DIESEL',
+    cea_card="""
+fuel DIESEL  C 12 H 26   wt%=100.
+  h,Kcal=-83.9  t(K)=298.15  rho,g/cc=0.820
+""",
+    coolprop_name=None,
+    density_ref=820.0,
+    mw_g_mol=170.34,
+    n_o2_stoich=18.5,      # C12H26 + 18.5 O2 -> 12CO2 + 13H2O
+    t_ad_peak=3150.0, t_ad_of_peak=9.2, t_ad_sigma=2.50, t_ad_floor=1500.0,
+    mw_exh_a=21.0, mw_exh_b=0.85, gamma_a=1.225, gamma_b=0.006,
+)
+
 FUELS: dict[str, Fuel] = {
     'IPA':      IPA,
     'Ethanol':  ETHANOL,
     'Methanol': METHANOL,
     'E85':      E85,
     'Acetone':  ACETONE,
+    'Diesel':   DIESEL,
 }
 
 # ── Default fuel ──────────────────────────────────────────────────────────────

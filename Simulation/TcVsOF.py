@@ -22,7 +22,7 @@ from PistonLiquidRocket import FUELS, combustion_props, thrust_coefficient, G0, 
 plt.style.use('ggplot')
 
 # -- Configuration -------------------------------------------------------------
-SELECTED_FUELS = ['IPA', 'Ethanol', 'E85', 'Acetone']  # subset of FUELS, or None for all
+SELECTED_FUELS = ['IPA', 'Ethanol', 'E85', 'Acetone', 'Diesel']  # subset of FUELS, or None for all
 LAM_MIN = 0.2       # lambda sweep start  (Tc/Isp plots)
 LAM_MAX = 1.0       # lambda sweep end
 LAM_N   = 300       # number of points
@@ -36,8 +36,11 @@ MIN_TEMP= 2000      # minimum temperature to plot [K]
 # Peak label offsets in points (dx, dy) — tweak to avoid line overlap
 OFFS           = 10
 LABEL_OFFSET_TC  = {'IPA': (-OFFS-15, OFFS), 'Ethanol': (OFFS, OFFS-2),
-                    'E85': (OFFS, -OFFS), 'Acetone': (-OFFS-10, -OFFS)}
-LABEL_OFFSET_ISP = {'IPA': (4, 0), 'Ethanol': (4, 0), 'E85': (4, 0), 'Acetone': (4, 0)}
+                    'E85': (OFFS, -OFFS-2), 'Acetone': (-OFFS-10, -OFFS-2),
+                    'Diesel': (-15, -15)}
+LABEL_OFFSET_ISP = {'IPA': (4, -8), 'Ethanol': (-25, 5),
+                    'E85': (4, 13), 'Acetone': (-20, -8),
+                    'Diesel': (0, -12)}
 # ------------------------------------------------------------------------------
 
 COLORS = ['tab:red', 'tab:blue', 'tab:green', 'tab:orange',
@@ -50,8 +53,8 @@ def main():
     lambdas = np.linspace(LAM_MIN, LAM_MAX, LAM_N)
     p_c_pa  = PC_MPA * 1e6
 
-    # -- Tc and Isp vs lambda --------------------------------------------------
-    fig, (ax_tc, ax_isp) = plt.subplots(2, 1, figsize=(6, 9))
+    # -- Isp vs lambda ---------------------------------------------------------
+    fig, ax_isp = plt.subplots(1, 1, figsize=(6, 5))
     fig.suptitle(
         f'N₂O Oxidiser — Pc = {PC_MPA:.1f} MPa,  ε = {EPS:.1f},  Pa = {P_AMB/1e3:.1f} kPa',
         fontsize=12,
@@ -60,14 +63,14 @@ def main():
     for fuel, color in zip(fuels, COLORS):
         ofs_fuel = lambdas * fuel.of_stoich
         props = [combustion_props(fuel, of, p_c_pa, EPS) for of in ofs_fuel]
-        Tc  = np.array([p[0] for p in props])
+        # Tc  = np.array([p[0] for p in props])
         gam = np.array([p[1] for p in props])
         cs  = np.array([p[3] for p in props])
         cf  = np.array([thrust_coefficient(g, EPS, p_c_pa, P_AMB) for g in gam])
         isp = cf * cs / G0
 
         for ax, data, peak_fmt, offsets in [
-            (ax_tc,  Tc,  '{:.0f} K', LABEL_OFFSET_TC),
+            # (ax_tc,  Tc,  '{:.0f} K', LABEL_OFFSET_TC),
             (ax_isp, isp, '{:.0f} s', LABEL_OFFSET_ISP),
         ]:
             ax.plot(lambdas, data, lw=2, color=color, label=fuel.name)
@@ -79,16 +82,14 @@ def main():
                         xytext=(dx, dy), textcoords='offset points',
                         fontsize=8, color=color, va='center')
 
-    # single stoichiometric line at lambda=1 (shared across all fuels)
-    for ax in (ax_tc, ax_isp):
-        ax.axvline(1.0, color='gray', lw=1.0, ls=':', alpha=0.8, label='Stoichiometric (λ=1)')
+    ax_isp.axvline(1.0, color='gray', lw=1.0, ls=':', alpha=0.8, label='Stoichiometric (λ=1)')
 
-    ax_tc.set_xlabel('λ', fontsize=11)
-    ax_tc.set_ylabel('Combustion Temperature (K)', fontsize=11)
-    ax_tc.set_title('Adiabatic Flame Temperature', fontsize=11)
-    ax_tc.set_ylim([MIN_TEMP,None])
-    ax_tc.legend(fontsize=10)
-    ax_tc.grid(True, alpha=0.3)
+    # ax_tc.set_xlabel('λ', fontsize=11)
+    # ax_tc.set_ylabel('Combustion Temperature (K)', fontsize=11)
+    # ax_tc.set_title('Adiabatic Flame Temperature', fontsize=11)
+    # ax_tc.set_ylim([MIN_TEMP,None])
+    # ax_tc.legend(fontsize=10)
+    # ax_tc.grid(True, alpha=0.3)
 
     ax_isp.set_xlabel('λ', fontsize=11)
     ax_isp.set_ylabel('Specific Impulse (s)', fontsize=11)
