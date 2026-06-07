@@ -30,5 +30,5 @@
 ## Constraints
 - Must be simple enough for a single person to build and operate
 - Must be safe
-- Must be able to fit in my car
+- Rocket must be able to fit in my car
 

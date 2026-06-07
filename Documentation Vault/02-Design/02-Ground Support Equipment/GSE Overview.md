@@ -13,5 +13,5 @@
 <!-- Thrust measurement, instrumentation, hold-down -->
 
 ## Related
-- [[02-Design/Feed System/Feed System Overview]]
-- [[04-Testing/Testing Index]]
+- [[02-Design/01-Propulsion System/Propulsion System Overview]]
+- [[03-Testing/Testing Index]]
