@@ -1,12 +1,13 @@
 """
-Combustion temperature and Isp vs O/F ratio — N2O oxidiser.
-Edit the config block below to change fuels and sweep parameters.
+Combustion temperature and Isp vs equivalence ratio lambda (= O/F / O/F_stoich).
+Also generates a standalone plot of lambda vs O/F for all selected fuels.
 
 Supported fuels
   IPA      -- Isopropyl alcohol        (C3H8O)
   Ethanol  -- Ethanol                  (C2H6O)
   Methanol -- Methanol                 (CH4O)
   E85      -- 85% ethanol / 15% iso-octane blend
+  Acetone  -- Acetone                  (C3H6O)
 
 """
 
@@ -20,15 +21,24 @@ from PistonLiquidRocket import FUELS, combustion_props, thrust_coefficient, G0, 
 
 plt.style.use('ggplot')
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-SELECTED_FUELS = ['IPA','Ethanol']  # subset of FUELS, or None for all
-OF_MIN      = 1.0       # O/F sweep start
-OF_MAX      = 8.0       # O/F sweep end
-OF_N        = 300       # number of points
-PC_MPA      = 3.0       # chamber pressure [MPa]
-EPS         = 4.0       # nozzle expansion ratio
-P_AMB       = 94_197.0  # ambient pressure [Pa]
-# ──────────────────────────────────────────────────────────────────────────────
+# -- Configuration -------------------------------------------------------------
+SELECTED_FUELS = ['IPA', 'Ethanol', 'E85', 'Acetone']  # subset of FUELS, or None for all
+LAM_MIN = 0.2       # lambda sweep start  (Tc/Isp plots)
+LAM_MAX = 1.0       # lambda sweep end
+LAM_N   = 300       # number of points
+OF_MIN  = 1.0       # O/F range for lambda vs O/F reference plot
+OF_MAX  = 8.0
+PC_MPA  = 3.0       # chamber pressure [MPa]
+EPS     = 4.0       # nozzle expansion ratio
+P_AMB   = 94_197.0  # ambient pressure [Pa]
+MIN_TEMP= 2000      # minimum temperature to plot [K]
+
+# Peak label offsets in points (dx, dy) — tweak to avoid line overlap
+OFFS           = 10
+LABEL_OFFSET_TC  = {'IPA': (-OFFS-15, OFFS), 'Ethanol': (OFFS, OFFS-2),
+                    'E85': (OFFS, -OFFS), 'Acetone': (-OFFS-10, -OFFS)}
+LABEL_OFFSET_ISP = {'IPA': (4, 0), 'Ethanol': (4, 0), 'E85': (4, 0), 'Acetone': (4, 0)}
+# ------------------------------------------------------------------------------
 
 COLORS = ['tab:red', 'tab:blue', 'tab:green', 'tab:orange',
           'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray']
@@ -36,47 +46,51 @@ COLORS = ['tab:red', 'tab:blue', 'tab:green', 'tab:orange',
 
 def main():
     fuel_names = SELECTED_FUELS if SELECTED_FUELS is not None else list(FUELS.keys())
-    fuels  = [FUELS[n] for n in fuel_names]
-    ofs    = np.linspace(OF_MIN, OF_MAX, OF_N)
-    p_c_pa = PC_MPA * 1e6
+    fuels   = [FUELS[n] for n in fuel_names]
+    lambdas = np.linspace(LAM_MIN, LAM_MAX, LAM_N)
+    p_c_pa  = PC_MPA * 1e6
 
+    # -- Tc and Isp vs lambda --------------------------------------------------
     fig, (ax_tc, ax_isp) = plt.subplots(2, 1, figsize=(6, 9))
     fig.suptitle(
-        f'N₂O Oxidiser - Pc = {PC_MPA:.1f} MPa,  ε = {EPS:.1f},  Pa = {P_AMB/1e3:.1f} kPa',
+        f'N₂O Oxidiser — Pc = {PC_MPA:.1f} MPa,  ε = {EPS:.1f},  Pa = {P_AMB/1e3:.1f} kPa',
         fontsize=12,
     )
 
-    tc_curves = {}   # fuel.name -> Tc array, for design-point annotation
-
     for fuel, color in zip(fuels, COLORS):
-        props = [combustion_props(fuel, of, p_c_pa, EPS) for of in ofs]
+        ofs_fuel = lambdas * fuel.of_stoich
+        props = [combustion_props(fuel, of, p_c_pa, EPS) for of in ofs_fuel]
         Tc  = np.array([p[0] for p in props])
         gam = np.array([p[1] for p in props])
         cs  = np.array([p[3] for p in props])
         cf  = np.array([thrust_coefficient(g, EPS, p_c_pa, P_AMB) for g in gam])
         isp = cf * cs / G0
-        tc_curves[fuel.name] = (color, Tc)
 
-        for ax, data, peak_fmt in [(ax_tc, Tc, '{:.0f} K'), (ax_isp, isp, '{:.0f} s')]:
-            ax.plot(ofs, data, lw=2, color=color, label=fuel.name)
+        for ax, data, peak_fmt, offsets in [
+            (ax_tc,  Tc,  '{:.0f} K', LABEL_OFFSET_TC),
+            (ax_isp, isp, '{:.0f} s', LABEL_OFFSET_ISP),
+        ]:
+            ax.plot(lambdas, data, lw=2, color=color, label=fuel.name)
             pk = int(np.argmax(data))
-            ax.scatter(ofs[pk], data[pk], color=color, s=60, zorder=5)
-            ax.annotate(f' {peak_fmt.format(data[pk])}',
-                        xy=(ofs[pk], data[pk]), fontsize=8, color=color, va='center',
-                        xytext=(10,10), textcoords="offset pixels")
-            of_st = fuel.of_stoich
-            if OF_MIN <= of_st <= OF_MAX:
-                ax.axvline(of_st, color=color, lw=0.8, ls=':', alpha=0.6)
-                idx_st = int(np.searchsorted(ofs, of_st))
-                ax.scatter([of_st], [data[idx_st]], color=color, s=30, marker='D', zorder=5)
+            ax.scatter(lambdas[pk], data[pk], color=color, s=60, zorder=5)
+            dx, dy = offsets.get(fuel.name, (4, 0))
+            ax.annotate(peak_fmt.format(data[pk]),
+                        xy=(lambdas[pk], data[pk]),
+                        xytext=(dx, dy), textcoords='offset points',
+                        fontsize=8, color=color, va='center')
 
-    ax_tc.set_xlabel('O/F Ratio', fontsize=11)
+    # single stoichiometric line at lambda=1 (shared across all fuels)
+    for ax in (ax_tc, ax_isp):
+        ax.axvline(1.0, color='gray', lw=1.0, ls=':', alpha=0.8, label='Stoichiometric (λ=1)')
+
+    ax_tc.set_xlabel('λ', fontsize=11)
     ax_tc.set_ylabel('Combustion Temperature (K)', fontsize=11)
     ax_tc.set_title('Adiabatic Flame Temperature', fontsize=11)
+    ax_tc.set_ylim([MIN_TEMP,None])
     ax_tc.legend(fontsize=10)
     ax_tc.grid(True, alpha=0.3)
 
-    ax_isp.set_xlabel('O/F Ratio', fontsize=11)
+    ax_isp.set_xlabel('λ', fontsize=11)
     ax_isp.set_ylabel('Specific Impulse (s)', fontsize=11)
     ax_isp.set_title('Specific Impulse  (ideal, no efficiency)', fontsize=11)
     ax_isp.legend(fontsize=10)
@@ -84,9 +98,32 @@ def main():
 
     plt.tight_layout()
     os.makedirs(PLOT_DIR, exist_ok=True)
-    out = os.path.join(PLOT_DIR, 'tc_isp_vs_of.png')
-    plt.savefig(out, dpi=150, bbox_inches='tight')
-    print(f"  Saved -> {out}")
+    out1 = os.path.join(PLOT_DIR, 'tc_isp_vs_lambda.png')
+    plt.savefig(out1, dpi=150, bbox_inches='tight')
+    print(f"  Saved -> {out1}")
+
+    # -- Standalone: lambda vs O/F for all fuels -------------------------------
+    fig2, ax2 = plt.subplots(figsize=(7, 5))
+    fig2.suptitle('O/F vs λ  —  N₂O Oxidiser', fontsize=12)
+
+    of_arr = np.linspace(OF_MIN, OF_MAX, LAM_N)
+    for fuel, color in zip(fuels, COLORS):
+        lam = of_arr / fuel.of_stoich
+        ax2.plot(lam, of_arr, lw=2, color=color,
+                 label=f'{fuel.name}  (stoich O/F = {fuel.of_stoich:.2f})')
+
+    ax2.axvline(1.0, color='gray', lw=1.0, ls='--', alpha=0.8, label='Stoichiometric (λ=1)')
+    ax2.set_xlabel('λ', fontsize=11)
+    ax2.set_ylabel('O/F Ratio', fontsize=11)
+    ax2.set_title('O/F = λ × O/F_stoich', fontsize=11)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out2 = os.path.join(PLOT_DIR, 'lambda_vs_of.png')
+    plt.savefig(out2, dpi=150, bbox_inches='tight')
+    print(f"  Saved -> {out2}")
+
     plt.show()
 
 

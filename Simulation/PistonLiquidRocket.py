@@ -240,16 +240,31 @@ fuel E85  C 8 H 18       wt%=13.400
     mw_exh_a=20.2, mw_exh_b=1.18, gamma_a=1.225, gamma_b=0.006,
 )
 
+ACETONE = Fuel(
+    name='Acetone', cea_name='ACETONE',
+    cea_card="""
+fuel ACETONE  C 3 H 6 O 1   wt%=100.
+  h,Kcal=-59.35  t(K)=298.15  rho,g/cc=0.791
+""",
+    coolprop_name='Acetone',
+    density_ref=791.0,
+    mw_g_mol=58.079,
+    n_o2_stoich=4.0,        # C3H6O + 4 O2 -> 3CO2 + 3H2O
+    t_ad_peak=3160.0, t_ad_of_peak=5.7, t_ad_sigma=1.80, t_ad_floor=1500.0,
+    mw_exh_a=20.4, mw_exh_b=1.16, gamma_a=1.225, gamma_b=0.006,
+)
+
 FUELS: dict[str, Fuel] = {
     'IPA':      IPA,
     'Ethanol':  ETHANOL,
     'Methanol': METHANOL,
     'E85':      E85,
+    'Acetone':  ACETONE,
 }
 
 # ── Default fuel ──────────────────────────────────────────────────────────────
 # Change this line to switch fuels without touching EngineConfig.
-# Options: IPA, ETHANOL, METHANOL, E85
+# Options: IPA, ETHANOL, METHANOL, E85, ACETONE
 DEFAULT_FUEL: Fuel = IPA
 
 
