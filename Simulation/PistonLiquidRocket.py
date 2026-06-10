@@ -280,7 +280,7 @@ FUELS: dict[str, Fuel] = {
 # ── Default fuel ──────────────────────────────────────────────────────────────
 # Change this line to switch fuels without touching EngineConfig.
 # Options: IPA, ETHANOL, METHANOL, E85, ACETONE
-DEFAULT_FUEL: Fuel = IPA
+DEFAULT_FUEL: Fuel = ETHANOL
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -322,9 +322,9 @@ class EngineConfig:
     fuel_valve_diam    : float = 0.01
 
     # O/F and fuel
-    of_ratio         : float          = 2.1
+    of_ratio         : float          = 2.0
     fuel             : Optional[Fuel] = field(default=None)  # None -> DEFAULT_FUEL in __post_init__
-    cstar_eta        : float          = 0.65
+    cstar_eta        : float          = 0.60
     nozzle_eta       : float          = 0.97
 
     # Fuel tank
@@ -336,6 +336,11 @@ class EngineConfig:
     ipa_blowdown     : bool  = True
     ipa_polytropic_n : float = 1.0
     piston_dp        : float = 103_421.0  # piston seal pressure loss [Pa] (15 psi, HalfCatSim)
+
+    # Chamber geometry
+    chamber_diam          : float = 0.051    # m  inner diameter of cylindrical section
+    chamber_length        : float = 0.127    # m  length of cylindrical section
+    convergent_half_angle : float = 45.0     # deg  half-angle of converging section
 
     # Nozzle geometry
     throat_diam      : float = 0.0254   # m
@@ -371,6 +376,18 @@ class EngineConfig:
         _fuel_A = np.pi / 4.0 * self.fuel_tank_diam ** 2
         self.ox_tank_length   = self.ox_tank_volume   / _ox_A
         self.fuel_tank_length = self.fuel_tank_volume / _fuel_A
+
+        # Characteristic chamber length L* = V_c / A_t
+        # V_c = cylindrical section + frustum of convergent cone
+        R_c = self.chamber_diam / 2.0
+        R_t = self.throat_diam  / 2.0
+        A_t = np.pi * R_t ** 2
+        A_c = np.pi * R_c ** 2
+        self.convergent_length = (R_c - R_t) / np.tan(np.radians(self.convergent_half_angle))
+        V_cyl  = A_c * self.chamber_length
+        V_conv = (np.pi / 3.0) * self.convergent_length * (R_c**2 + R_c*R_t + R_t**2)
+        self.chamber_volume = V_cyl + V_conv
+        self.L_star = self.chamber_volume / A_t
 
         # Auto-size injector areas if not provided.
         # Uses design O/F and target dP to size both injectors proportionally.
@@ -967,8 +984,16 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     print(f"  Flow separation limit   : {eng._p_c_sep/1e5:.3f} bar  (Pe < 40% Pa, Summerfield)")
     print(f"  Design O/F ratio        : {cfg.of_ratio:.2f}  "
           f"(stoich = {cfg.fuel.of_stoich:.2f})")
+    p_c_design = p_sat_0 * (1.0 - cfg.inj_target_dp)
+    pe_design  = eng._pe_over_pc * p_c_design
     print(f"  Throat / exit           : {cfg.throat_diam*1000:.1f} mm / "
           f"{cfg.exit_diam*1000:.1f} mm  (eps={eng.expansion_ratio:.2f})")
+    print(f"  Nozzle exit pressure    : {pe_design/1e5:.3f} bar  "
+          f"(Pe/Pa = {pe_design/cfg.p_ambient:.3f}  @  Pc = {p_c_design/1e5:.2f} bar)")
+    print(f"  Chamber                 : ⌀{cfg.chamber_diam*1000:.0f} mm  ×  "
+          f"{cfg.chamber_length*1000:.0f} mm cyl  +  "
+          f"{cfg.convergent_length*1000:.1f} mm conv ({cfg.convergent_half_angle:.0f}°)  "
+          f"→  L* = {cfg.L_star:.3f} m  ({cfg.chamber_volume*1e6:.1f} cc)")
     print(sep)
 
 
@@ -1005,7 +1030,7 @@ def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
     hist = {k: v[:-1] if len(v) > 1 else v for k, v in hist.items()}
     t = hist['t']
     fuel_label = f"{fuel_name} (fuel)"
-    fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+    fig, axes = plt.subplots(3, 2, figsize=(10, 12))
     fig.suptitle(f"{title if title else ''}",
                  fontsize=13, fontweight='bold')
 
@@ -1015,9 +1040,9 @@ def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
          'Thrust (N)',      'Thrust',               'tab:red',   True,  None),
         (axes[0, 1], hist['isp'],
          'Isp (s)',         'Specific Impulse',     'tab:blue',  False, None),
-        (axes[1, 1], [T - 273.15 for T in hist['n2o_temp']],
+        (axes[2, 0], [T - 273.15 for T in hist['n2o_temp']],
          'Temperature (C)', 'N2O Tank Temperature', 'tab:cyan',  False, None),
-        (axes[1, 2], [f + o for f, o in zip(hist['fuel_mass'], hist['ox_mass'])],
+        (axes[2, 1], [f + o for f, o in zip(hist['fuel_mass'], hist['ox_mass'])],
          'Propellant (kg)', 'Propellant Remaining', 'tab:green', True, "Total"),
     ]
     for ax, data, ylabel, title_ax, color, zero_origin, label in panels:
@@ -1028,14 +1053,14 @@ def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
             ax.set_ylim(bottom=0)
 
     # ── Combined pressure panel ───────────────────────────────────────────────
-    ax_p = axes[0, 2]
+    ax_p = axes[1, 0]
     ax_p.plot(t, [p/1e6 for p in hist['p_feed_ox']], color='tab:orange', lw=1.8, label='Feed')
     ax_p.plot(t, [p/1e6 for p in hist['p_chamber']], color='tab:red',    lw=1.8, label='Chamber')
     ax_p.set_xlabel('Time (s)'); ax_p.set_ylabel('Pressure (MPa)'); ax_p.set_title('Pressures')
     ax_p.legend(fontsize=8); ax_p.grid(True, alpha=0.3); ax_p.set_ylim(bottom=0)
 
     # ── Combined mass flow panel ──────────────────────────────────────────────
-    ax_m = axes[1, 0]
+    ax_m = axes[1, 1]
     ax_m.plot(t, hist['mdot'],      color='tab:green',   lw=1.8, label='Total')
     ax_m.plot(t, hist['mdot_ox'],   color='orangered',   lw=1.3, ls='--', label='N2O (ox)')
     ax_m.plot(t, hist['mdot_fuel'], color='steelblue',   lw=1.3, ls='--', label=fuel_label)
@@ -1043,9 +1068,9 @@ def plot_results(hist: dict, title: str = "", fuel_name: str = "Fuel"):
     ax_m.legend(fontsize=8); ax_m.grid(True, alpha=0.3); ax_m.set_ylim(bottom=0)
 
     # ── Propellant remaining species overlay ──────────────────────────────────
-    axes[1, 2].plot(t, hist['ox_mass'],   '--', color='orangered', lw=1.3, label='N2O (ox)')
-    axes[1, 2].plot(t, hist['fuel_mass'], '--', color='steelblue', lw=1.3, label=fuel_label)
-    axes[1, 2].legend(fontsize=8)
+    axes[2, 1].plot(t, hist['ox_mass'],   '--', color='orangered', lw=1.3, label='N2O (ox)')
+    axes[2, 1].plot(t, hist['fuel_mass'], '--', color='steelblue', lw=1.3, label=fuel_label)
+    axes[2, 1].legend(fontsize=8)
 
     plt.tight_layout()
     os.makedirs(PLOT_DIR, exist_ok=True)
