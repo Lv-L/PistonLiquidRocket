@@ -58,7 +58,10 @@ Chamber dimensions were copied from Half Cat, given that chamber sizing is typic
 | Characteristic length (L*) | 635            |
 ### Components
 #### Tanks
+The tank is a "piston style" tank that is the same as Half Cat's design, where the vapor pressure of the N2O pushes along a piston to expel the fuel. From the Half Cat Mojave Sphinx Guidebook:
+![[Pasted image 20260610212356.png]]
 #### Regulators
+No regulators are used - instead the main valves are set to open at a point between the operating pressure and the burst pressure of the tank, in the case of an extremely hot day or radiative heating of the tank resulting in it being heated to greater than 35 degrees C.
 #### Valves
 1/4" BSP 304 stainless full port ball valve, 1000 psi - [Pacific Fittings](https://www.camlockfittings.com.au/2-piece-ball-valves-ss304.html)
 Use 3d print with [DS3225 servo - Amazon](https://www.amazon.com.au/AKLOSIPY-DS3225MG-Digital-Servo-Multiple/dp/B0FX16CGW4?source=ps-sl-shoppingads-lpcontext&psc=1&smid=A1VAS17HV99LTB) to convert to servo valve for ox fill valve, main ox valve and main fuel valve.
@@ -66,11 +69,40 @@ Use 3d print with [DS3225 servo - Amazon](https://www.amazon.com.au/AKLOSIPY-DS3
 As shown in [[#Fluid System Architecture]], there is plumbing required for oxidiser and fuel lines. Half Cat's use of braided PTFE flex lines is adopted, along with their sizes of AN6 (7/16" OD) line for the oxidiser and AN5 (3/8" OD) line for the fuel.
 
 ## Analysis
+The simulation models a piston-fed N2O + liquid fuel rocket where a two-phase N2O tank self-pressurises and drives a piston to expel fuel. At each timestep it computes propellant mass flow rates through injector orifices (using incompressible orifice flow), calls rocketCEA to get ideal combustion properties (T0, γ, MW, c*), applies combustion efficiency to get actual c*, then solves the chamber pressure from c* = Pc·At/ṁ. Thrust and Isp follow from the nozzle expansion, and the N2O tank state evolves via an adiabatic energy balance accounting for liquid/vapour phase change.
+
 For the purposes of initial analysis, a target injector pressure drop was set at 20% initial feed pressure. A combustion efficiency of 65% and a nozzle efficiency of 97% was used. Half Cat's feed line geometries were used to estimate feed line pressure drop, this can be fine tuned as the design progresses to CAD.
 
-![A:\Projects\Rockets\Liquid\engine_simulation.png](file:///a%3A/Projects/Rockets/Liquid/engine_simulation.png)
+Inputs (non exhaustive):
+- Tank volume (ox + fuel): 5L
+- Ox tank diameter: 95.2 mm
+- Ox ullage: 5% by volume
+- Fuel: Ethanol
+- O/F: 2.0
+- Throat diameter: 25.4 mm
+- Nozzle expansion ratio: 4
 
+Hot day (30C):
+![[engine_simulation_30C.png]]
+Results:
+- Burn time: 1.970 s
+- Average / peak thrust: 2300.7 N / 3247.2 N
+- Average Isp: 147.15 s
+- Total impulse : 4511.8 N*s
+- Average c*: 1023.3 m/s
+- N2O temp drop: 30.11 K  (29.5 C -> -0.6 C)
+- N2O pressure drop: 6.308 -> 3.078 MPa
 
+Cold day (10C):
+![[engine_simulation_10C 1.png]]
+Results:
+- Burn time: 3.200 s
+- Average / peak thrust: 1587.0 N / 2114.8 N
+- Average Isp: 142.38 s
+- Total impulse: 5067.6 N*s
+- Average c*: 1022.4 m/s
+- N2O temp drop:  24.33 K  (9.9 C -> -14.4 C)
+- N2O pressure drop: 4.001 -> 2.114 MPa
 ## Related
 - [[02-Design/03-Ground Support Equipment/GSE Overview]]
 - [[02-Design/04-Flight Systems/Flight Systems Overview]]

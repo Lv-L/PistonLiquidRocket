@@ -292,10 +292,10 @@ class EngineConfig:
     # Combined tank volume (ox + fuel sections share one tube separated by a piston).
     # ox_tank_volume and fuel_tank_volume are derived in __post_init__ from this value,
     # the O/F ratio, propellant densities, and ullage fraction.
-    tank_volume      : float         = 4.5e-3  # m^3  total internal volume (ox + fuel)
+    tank_volume      : float         = 5e-3  # m^3  total internal volume (ox + fuel)
     ox_tank_diam     : float         = 0.0952  # m  (cylindrical tank inner diameter)
     ox_ullage        : float         = 0.05    # initial vapour volume fraction [-]
-    n2o_init_temp_K  : float         = 283.15  # K  (50 F / 10 C, HalfCatSim default)
+    n2o_init_temp_K  : float         = 30 + 273.15  # K
 
 
     # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
@@ -1181,7 +1181,7 @@ def main():
     print_summary(hist, engine.stop_reason)
 
     if hist['t']:
-        plot_results(hist, title=f"N2O/{cfg.fuel.name}  O/F={cfg.of_ratio}",
+        plot_results(hist, title=f"N2O/{cfg.fuel.name}  O/F={cfg.of_ratio}  Tank={cfg.n2o_init_temp_K - 273.15:.1f}°C",
                      fuel_name=cfg.fuel.name)
 
 
