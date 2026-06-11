@@ -16,5 +16,5 @@
 <!-- Mass budget, CG/CP, stability margin -->
 
 ## Related
-- [[02-Design/01-Propulsion System/Propulsion System Overview]]
+- [[01-Propulsion System Overview]]
 - [[01-Requirements/Requirements]]

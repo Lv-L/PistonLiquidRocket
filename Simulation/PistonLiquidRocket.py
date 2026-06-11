@@ -293,9 +293,9 @@ class EngineConfig:
     # ox_tank_volume and fuel_tank_volume are derived in __post_init__ from this value,
     # the O/F ratio, propellant densities, and ullage fraction.
     tank_volume      : float         = 5e-3  # m^3  total internal volume (ox + fuel)
-    ox_tank_diam     : float         = 0.0952  # m  (cylindrical tank inner diameter)
+    ox_tank_diam     : float         = 0.094  # m  (cylindrical tank inner diameter)
     ox_ullage        : float         = 0.05    # initial vapour volume fraction [-]
-    n2o_init_temp_K  : float         = 30 + 273.15  # K
+    n2o_init_temp_K  : float         = 10 + 273.15  # K
 
 
     # Injector geometry  (A values = None means auto-sized from design O/F and target dP)

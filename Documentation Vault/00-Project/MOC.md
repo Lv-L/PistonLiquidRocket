@@ -10,6 +10,6 @@
 ## Key Documents
 - [[01-Requirements/Requirements]] — top-level requirements
 - [[00-Project/Timeline]] — project milestones
-- [[02-Design/01-Propulsion System/Propulsion System Overview]]
+- [[01-Propulsion System Overview]]
 - [[02-Design/02-Ground Support Equipment/GSE Overview]]
 - [[02-Design/03-Flight Systems/Flight Systems Overview]]
