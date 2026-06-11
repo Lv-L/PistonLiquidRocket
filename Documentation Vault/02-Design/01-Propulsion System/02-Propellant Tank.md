@@ -30,3 +30,7 @@ VM: Von Mises
 Given that the machining constraints would limit the wall thickness of the tank to > 2mm, and at 3.0 mm machining would not be required, as it is a standard tube thickness. Hence, a tube thickness of 3.0 mm was chosen.
 
 ## Bolt Tear-Out
+
+6x M6 bolts:
+
+![A:\Projects\Rockets\Liquid\bolt_tearout.png](file:///a%3A/Projects/Rockets/Liquid/bolt_tearout.png)
