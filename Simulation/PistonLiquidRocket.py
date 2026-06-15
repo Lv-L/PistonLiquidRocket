@@ -67,7 +67,8 @@ N2O_MW    = 44.013           # g/mol
 N2O_FLUID = "NitrousOxide"  # CoolProp identifier
 
 # ── Plot output directory ──────────────────────────────────────────────────────
-PLOT_DIR = os.getcwd()
+PLOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        '..', 'Documentation Vault', '99-Attachments')
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -25,7 +25,7 @@ H: hoop
 A: axial
 VM: Von Mises
 
-![A:\Projects\Rockets\Liquid\Hoop Stress.png](file:///a%3A/Projects/Rockets/Liquid/Hoop%20Stress.png)
+![[Hoop Stress.png]]
 
 Given that the machining constraints would limit the wall thickness of the tank to > 2mm, and at 3.0 mm machining would not be required, as it is a standard tube thickness. Hence, a tube thickness of 3.0 mm was chosen.
 
@@ -33,4 +33,4 @@ Given that the machining constraints would limit the wall thickness of the tank 
 
 6x M6 bolts:
 
-![A:\Projects\Rockets\Liquid\bolt_tearout.png](file:///a%3A/Projects/Rockets/Liquid/bolt_tearout.png)
+![[bolt_tearout.png]]

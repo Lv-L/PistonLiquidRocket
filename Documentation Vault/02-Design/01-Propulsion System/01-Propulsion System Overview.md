@@ -36,7 +36,7 @@ On the basis of safety, the use of methanol was ruled out due to its high toxici
 
 For propellants, ethanol and E85 were chosen. Ethanol for its performance and lack of residue, and E85 for "show", with it having a more visible orange flame. Given that E85 has lower performance, the ethanol case will be used to establish a conservative "upper limit" of performance.
 
-![A:\Projects\Rockets\Liquid\Simulation\tc_isp_vs_lambda.png](file:///a%3A/Projects/Rockets/Liquid/Simulation/tc_isp_vs_lambda.png)
+![[tc_isp_vs_lambda.png]]
 
 An OF of 2 will be used initially to reduce flame temperature with a small penalty in Isp. For ethanol, an OF ratio of 2 results in an adiabatic flame temperature of 2828 K and an Isp of 252 s. This means a penalty of 8 s of Isp gives a temperature reduction of 489 K (with ethanol's peak Isp being 260 s at an adiabatic flame temperature of 3317 K).
 
