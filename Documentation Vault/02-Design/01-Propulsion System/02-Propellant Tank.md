@@ -33,9 +33,9 @@ A 101.6 mm OD × 3.2 mm wall tube is standard 4" aluminium stock — no machinin
 
 ### Bolt Retention
 
-The bulkhead is retained by **10× M6 Grade 8.8** radial bolts through the tank wall. Clearance hole Ø6.6 mm, axial edge distance e = 12 mm.
+The bulkhead is retained by **10× M6 Grade 12.9** radial bolts through the tank wall. Clearance hole Ø6.6 mm, axial edge distance e = 12 mm.
 
-Material properties: τ_Y = σ_Y/√3 = 159.4 MPa (wall shear yield), σ_{br,Y} = 386 MPa (bearing yield, ≈1.4 × σ_Y per MIL-HDBK-5), σ_{Y,bolt} = 640 MPa.
+Material properties: τ_Y = σ_Y/√3 = 159.4 MPa (wall shear yield), σ_{br,Y} = 386 MPa (bearing yield, ≈1.4 × σ_Y per MIL-HDBK-5), σ_{Y,bolt} = 1080 MPa.
 
 Total axial pressure load and load per bolt:
 
@@ -57,9 +57,9 @@ Minimum edge distance at SF = 1.5: $e_{min} = d_h/2 + F_{bolt} \cdot SF\,/\,(2t\
 
 Single shear across bolt cross-section at the inner wall surface:
 
-$$F_{shear} = \frac{\sigma_{Y,bolt}}{\sqrt{3}} \cdot \frac{\pi}{4} d^2 = 369.5 \times \frac{\pi}{4}(6)^2 = 10{,}453\ \text{N}$$
+$$F_{shear} = \frac{\sigma_{Y,bolt}}{\sqrt{3}} \cdot \frac{\pi}{4} d^2 = 623.5 \times \frac{\pi}{4}(6)^2 = 17{,}639\ \text{N}$$
 
-$$SF_{shear} = \frac{10{,}453}{5{,}004} = \mathbf{2.09 \ ✓}$$
+$$SF_{shear} = \frac{17{,}639}{5{,}004} = \mathbf{3.52 \ ✓}$$
 
 #### Net Section Tensile Failure
 
@@ -85,12 +85,21 @@ Bearing is the critical failure mode (SF = 1.48 < 1.5 target). This is accepted 
 
 #### Summary
 
-| Failure mode   | SF    | Status        |
-| -------------- | ----- | ------------- |
-| Tank burst     | 2.86  | ✓             |
-| Tearout        | 1.77  | ✓             |
-| Bolt shear     | 2.09  | ✓             |
-| Net section    | 3.02  | ✓             |
-| Bearing        | 1.48  | Acceptable\*  |
+| Failure mode | SF   | Status     |
+| ------------ | ---- | ---------- |
+| Tank burst   | 2.86 | ✓          |
+| Tearout      | 1.77 | ✓          |
+| Bolt shear   | 3.52 | ✓          |
+| Net section  | 3.02 | ✓          |
+| Bearing      | 1.48 | Acceptable |
 
-\* Bearing SF < 1.5 accepted: design pressure is a physical maximum, not a worst-case estimate.
+## Sealing
+
+### Bulkheads
+![[O-ring Bulkhead.png]]
+
+### Piston
+
+![[O-ring Piston.png]]
+
+### Threaded Connections

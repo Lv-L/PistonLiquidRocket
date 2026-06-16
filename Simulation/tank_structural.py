@@ -11,8 +11,8 @@ P           = 7.03e6    # Internal pressure, Pa
 tank_id     = 95.2e-3   # Tank inner diameter, m
 tank_od     = 101.6e-3  # Tank outer diameter, m
 n_bolts     = 10        # Number of radial retaining bolts
-bolt_d      = 6.0e-3   # Bolt major diameter (bearing, shear), m
-hole_d      = 6.6e-3   # Clearance hole diameter (tearout, net section), m
+bolt_d      = 6.0e-3    # Bolt major diameter (bearing, shear), m
+hole_d      = 6.6e-3    # Clearance hole diameter (tearout, net section), m
 e_actual    = 12.0e-3   # Actual axial edge distance (hole centre to tank end), m
 e_min       = 5.0e-3    # Min edge distance for plot, m
 e_max       = 20.0e-3   # Max edge distance for plot, m
@@ -20,7 +20,7 @@ npoints     = 200
 
 sigmaY        = 276e6   # Yield strength of tank material, Pa  (Al 6061-T6)
 sigmaBearingY = 386e6   # Bearing yield of tank material, Pa  (Al 6061-T6, ~1.4 × sigmaY per MIL-HDBK-5)
-sigmaY_bolt   = 640e6   # Yield strength of bolt material, Pa  (Grade 8.8 steel)
+sigmaY_bolt   = 1080e6  # Yield strength of bolt material, Pa  (Grade 12.9 steel)
 SF            = 1.5     # Safety factor
 
 # ── Derived ────────────────────────────────────────────────────────────────────
