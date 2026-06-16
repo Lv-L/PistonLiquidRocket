@@ -51,7 +51,10 @@ SF_tearout_actual = F_tearout_actual / F_per_bolt
 # pi*(Do - wall_t) is the mean circumference of the wall (failure plane through bolt holes)
 sigma_net     = (np.pi / 4 * tank_id**2 * P) / \
                 ((np.pi * (tank_od - wall_t) - n_bolts * hole_d) * wall_t)
-SF_net_actual = sigmaY / sigma_net
+# Hoop stress also acts at the bolt hole plane — combine via Von Mises
+sigma_hoop    = P * (tank_id / 2) / wall_t
+sigma_vm_net  = np.sqrt(sigma_net**2 + sigma_hoop**2 - sigma_net * sigma_hoop)
+SF_net_actual = sigmaY / sigma_vm_net
 
 # Bearing failure: bolt pushes against edge of hole in tank wall
 sigma_bearing     = F_per_bolt / (bolt_d * wall_t)
@@ -64,7 +67,7 @@ print(f"  (hole d={hole_d*1e3:.1f} mm, wall t={wall_t*1e3:.1f} mm)")
 print(f"Actual edge distance : {e_actual*1e3:.1f} mm")
 print(f"  Tearout SF         : {SF_tearout_actual:.2f}  ({'OK' if SF_tearout_actual >= SF else 'FAIL'})")
 print(f"  Bolt shear SF      : {SF_shear_actual:.2f}  ({'OK' if SF_shear_actual >= SF else 'FAIL'})")
-print(f"  Net section SF     : {SF_net_actual:.2f}  ({'OK' if SF_net_actual >= SF else 'FAIL'})  (sigma={sigma_net*1e-6:.1f} MPa)")
+print(f"  Net section SF     : {SF_net_actual:.2f}  ({'OK' if SF_net_actual >= SF else 'FAIL'})  (VM={sigma_vm_net*1e-6:.1f} MPa, axial={sigma_net*1e-6:.1f}, hoop={sigma_hoop*1e-6:.1f})")
 print(f"  Bearing SF         : {SF_bearing_actual:.2f}  ({'OK' if SF_bearing_actual >= SF else 'FAIL'})  (sigma={sigma_bearing*1e-6:.1f} MPa)")
 
 # ── Plot ───────────────────────────────────────────────────────────────────────
