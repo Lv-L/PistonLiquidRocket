@@ -294,9 +294,9 @@ class EngineConfig:
     # ox_tank_volume and fuel_tank_volume are derived in __post_init__ from this value,
     # the O/F ratio, propellant densities, and ullage fraction.
     tank_volume      : float         = 5e-3  # m^3  total internal volume (ox + fuel)
-    ox_tank_diam     : float         = 0.094  # m  (cylindrical tank inner diameter)
+    ox_tank_diam     : float         = 0.09525  # m  (cylindrical tank inner diameter)
     ox_ullage        : float         = 0.05    # initial vapour volume fraction [-]
-    n2o_init_temp_K  : float         = 10 + 273.15  # K
+    n2o_init_temp_K  : float         = 20 + 273.15  # K
 
 
     # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
@@ -306,7 +306,7 @@ class EngineConfig:
     cd_fuel      : float          = 0.55    # discharge coefficient, fuel orifice(s)
     A_inj_ox     : Optional[float] = None   # total N2O injector area [m^2]
     A_inj_fuel   : Optional[float] = None   # total fuel injector area [m^2]
-    inj_target_dp: float          = 0.20    # dP/P_feed fraction used for auto-sizing
+    inj_target_dp: float          = 0.6     # dP/P_feed fraction used for auto-sizing
 
     # Oxidiser (N2O) feed line  — pipe geometry + in-line valve
     ox_line_id       : float = 7.94e-3  # inner diameter [m];  0 = no feed-line loss
@@ -940,10 +940,15 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     print(f"    Saturation pressure  : {p_sat_0/1e6:.3f} MPa  ({p_sat_0/6894.76:.0f} psi)")
     print(f"    Liquid density       : {rho_liq_0:.1f} kg/m^3")
     print(f"    Vapour density       : {rho_vap_0:.1f} kg/m^3")
-    V_vap_init = eng.ox_tank.m_vap / _CP('D', 'T', T0, 'Q', 1, N2O_FLUID)
-    ullage_pct = 100.0 * V_vap_init / cfg.ox_tank_volume
+    V_vap_init  = eng.ox_tank.m_vap / _CP('D', 'T', T0, 'Q', 1, N2O_FLUID)
+    ullage_pct  = 100.0 * V_vap_init / cfg.ox_tank_volume
+    V_liq_init  = eng.ox_tank.m_liq / rho_liq_0
+    A_ox        = np.pi / 4.0 * cfg.ox_tank_diam ** 2
+    L_piston_0  = V_liq_init / A_ox
+
     print(f"    Liquid / vapour mass : {eng.ox_tank.m_liq:.3f} kg  /  {eng.ox_tank.m_vap:.3f} kg")
-    print(f"    Ullage (vapour vol)  : {ullage_pct:.1f}%  ({V_vap_init*1e3:.2f} L vapour)")
+    print(f"    Ullage / piston cav  : {ullage_pct:.1f}%  ({V_vap_init*1e3:.2f} L)")
+    print(f"    Piston start         : {L_piston_0*1e3:.0f} mm from ox. bulkhead")
     print(f"    Volume / diameter    : {cfg.ox_tank_volume*1e3:.2f} L  /  {cfg.ox_tank_diam*1e3:.0f} mm"
           f"  (of {cfg.tank_volume*1e3:.2f} L total)")
     print(f"    Length               : {cfg.ox_tank_length*1e3:.0f} mm")
