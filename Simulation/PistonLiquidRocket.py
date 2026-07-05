@@ -109,10 +109,24 @@ class N2OThermoTable:
             float(np.interp(T, Tv, self.p_sat)),
         )
 
-    def find_T_for_U(self, U_target: float, m_liq: float, volume: float) -> float:
-        V_vap = np.maximum(0.0, volume - m_liq / self.rho_liq)
-        U_arr = m_liq * self.u_liq + self.rho_vap * V_vap * self.u_vap
-        # np.interp clamps to boundary values — prevents out-of-range extrapolation
+    def find_T_for_U(self, U_target: float, M_total: float, volume: float) -> float:
+        """
+        Find T such that total internal energy = U_target.
+        M_total is the total remaining mass (liquid + vapour) in the tank.
+
+        Uses the same two-phase equilibrium split as __init__ — liquid and vapour
+        masses both vary self-consistently with T, so U(T) is guaranteed monotone.
+        Holding m_liq fixed instead (prior approach) made U(T) non-monotone at
+        low liquid mass, causing interpolation artefacts.
+        """
+        # Self-consistent phase split at each table temperature:
+        #   m_liq/rho_liq + m_vap/rho_vap = volume  and  m_liq + m_vap = M_total
+        # → m_liq = (volume - M_total/rho_vap) / (1/rho_liq - 1/rho_vap)
+        denom   = 1.0 / self.rho_liq - 1.0 / self.rho_vap   # → 0 near critical pt
+        safe_d  = np.where(np.abs(denom) > 1e-9, denom, 1e-9)
+        m_liq_a = np.clip((volume - M_total / self.rho_vap) / safe_d, 0.0, M_total)
+        m_vap_a = M_total - m_liq_a
+        U_arr   = m_liq_a * self.u_liq + m_vap_a * self.u_vap
         return float(np.interp(U_target, U_arr, self.T))
 
 
@@ -302,11 +316,11 @@ class EngineConfig:
     # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
     # Cd values match HalfCatSim hardware; areas solved analytically to hit
     # Pc=218.6 psi and O/F=2.77 at 283.15 K N2O with 15 psi piston loss.
-    cd_ox        : float          = 0.40    # discharge coefficient, N2O orifice(s)
-    cd_fuel      : float          = 0.55    # discharge coefficient, fuel orifice(s)
+    cd_ox        : float           = 0.5    # discharge coefficient, N2O orifice(s)
+    cd_fuel      : float           = 0.5    # discharge coefficient, fuel orifice(s)
     A_inj_ox     : Optional[float] = None   # total N2O injector area [m^2]
     A_inj_fuel   : Optional[float] = None   # total fuel injector area [m^2]
-    inj_target_dp: float          = 0.6     # dP/P_feed fraction used for auto-sizing
+    inj_target_dp: float           = 0.6     # dP/P_feed fraction used for auto-sizing
 
     # Oxidiser (N2O) feed line  — pipe geometry + in-line valve
     ox_line_id       : float = 7.94e-3  # inner diameter [m];  0 = no feed-line loss
@@ -316,7 +330,7 @@ class EngineConfig:
     ox_valve_diam    : float = 0.01     # valve bore diameter [m]
 
     # Fuel feed line  — pipe geometry + in-line valve
-    fuel_line_id       : float = 5.715e-3
+    fuel_line_id       : float = 7.94e-3
     fuel_line_length   : float = 1.219
     fuel_line_roughness: float = 1.5e-6
     fuel_valve_Cd      : float = 0.8
@@ -377,6 +391,8 @@ class EngineConfig:
         _fuel_A = np.pi / 4.0 * self.fuel_tank_diam ** 2
         self.ox_tank_length   = self.ox_tank_volume   / _ox_A
         self.fuel_tank_length = self.fuel_tank_volume / _fuel_A
+        # Tube length for liquid N2O only — ullage lives inside the piston, not in the tube
+        self.ox_tube_length   = self.ox_tank_volume * (1.0 - self.ox_ullage) / _ox_A
 
         # Characteristic chamber length L* = V_c / A_t
         # V_c = cylindrical section + frustum of convergent cone
@@ -567,15 +583,21 @@ class N2OSelfPressTank:
             return
         tbl = self._tbl
         _, _, u_liq, u_vap, h_liq, _ = tbl.at(self.T)
-        U_target  = self.m_liq * u_liq + self.m_vap * u_vap - h_liq * dm
-        m_liq_new = self.m_liq - dm
+        U_target = self.m_liq * u_liq + self.m_vap * u_vap - h_liq * dm
+        M_total  = self.m_liq + self.m_vap - dm   # total mass remaining (conserved)
 
-        T_new       = tbl.find_T_for_U(U_target, m_liq_new, self.volume)
+        T_new       = tbl.find_T_for_U(U_target, M_total, self.volume)
         rho_liq_new = float(np.interp(T_new, tbl.T, tbl.rho_liq))
         rho_vap_new = float(np.interp(T_new, tbl.T, tbl.rho_vap))
+        denom_new = 1.0 / rho_liq_new - 1.0 / rho_vap_new
+        if abs(denom_new) > 1e-9:
+            m_liq_new = (self.volume - M_total / rho_vap_new) / denom_new
+        else:
+            m_liq_new = M_total / 2.0   # near critical point
+        m_liq_new  = max(0.0, min(M_total, m_liq_new))
         self.T     = T_new
         self.m_liq = m_liq_new
-        self.m_vap = rho_vap_new * (self.volume - m_liq_new / rho_liq_new)
+        self.m_vap = M_total - m_liq_new
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -811,7 +833,7 @@ class PistonEngine:
             r = (self._K_ox   * np.sqrt(dp_ox)
                  + self._K_fuel * np.sqrt(dp_fuel)
                  - self._k_mdot * p_c)
-            if abs(r) < 1e-3:
+            if abs(r) < 1e-6:
                 break
             drdp = self._k_mdot
             if dp_ox   > 0: drdp += self._K_ox   * 0.5 / np.sqrt(dp_ox)
@@ -821,7 +843,7 @@ class PistonEngine:
         dp_fuel = max(0.0, p_feed_fuel - p_c)
         r_final = (self._K_ox * np.sqrt(dp_ox) + self._K_fuel * np.sqrt(dp_fuel)
                    - self._k_mdot * p_c)
-        if abs(r_final) >= 1e-2:
+        if abs(r_final) >= 1e-4:
             return None
         self._p_c_prev = p_c
         return float(p_c)
@@ -951,7 +973,7 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     print(f"    Piston start         : {L_piston_0*1e3:.0f} mm from ox. bulkhead")
     print(f"    Volume / diameter    : {cfg.ox_tank_volume*1e3:.2f} L  /  {cfg.ox_tank_diam*1e3:.0f} mm"
           f"  (of {cfg.tank_volume*1e3:.2f} L total)")
-    print(f"    Length               : {cfg.ox_tank_length*1e3:.0f} mm")
+    print(f"    Tube length (liquid) : {cfg.ox_tube_length*1e3:.0f} mm  (ullage in piston)")
     print(f"    Thermal model        : adiabatic (T drops as liquid drains)")
     print(f"  {cfg.fuel.name} fuel tank  (piston)")
     print(f"    Density              : {cfg.fuel.liquid_density():.1f} kg/m^3"

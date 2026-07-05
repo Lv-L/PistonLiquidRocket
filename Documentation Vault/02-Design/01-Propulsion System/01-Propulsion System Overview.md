@@ -59,14 +59,19 @@ Chamber dimensions were copied from Half Cat, given that chamber sizing is typic
 ### Components
 #### Tanks
 The tank is a "piston style" tank that is the same as Half Cat's design, where the vapor pressure of the N2O pushes along a piston to expel the fuel. From the Half Cat Mojave Sphinx Guidebook:
-![[Pasted image 20260610212356.png]]
+![[MS Propellant Tank.png]]
 #### Regulators
 No regulators are used - instead the main valves are set to open at a point between the operating pressure and the burst pressure of the tank, in the case of an extremely hot day or radiative heating of the tank resulting in it being heated to greater than 35 degrees C.
 #### Valves
-1/4" BSP 304 stainless full port ball valve, 1000 psi - [Pacific Fittings](https://www.camlockfittings.com.au/2-piece-ball-valves-ss304.html)
+1/4" NPT brass full port ball valve, 1000 psi - [Aircraft Spruce]([https://www.camlockfittings.com.au/2-piece-ball-valves-ss304.html](https://www.aircraftspruce.com.au/catalog/appages/highpressurevalve.php))
 Use 3d print with [DS3225 servo - Amazon](https://www.amazon.com.au/AKLOSIPY-DS3225MG-Digital-Servo-Multiple/dp/B0FX16CGW4?source=ps-sl-shoppingads-lpcontext&psc=1&smid=A1VAS17HV99LTB) to convert to servo valve for ox fill valve, main ox valve and main fuel valve.
-#### Plumbing
-As shown in [[#Fluid System Architecture]], there is plumbing required for oxidiser and fuel lines. Half Cat's use of braided PTFE flex lines is adopted, along with their sizes of AN6 (7/16" OD) line for the oxidiser and AN5 (3/8" OD) line for the fuel.
+#### Plumbing (Hose + Fittings)
+Half Cat's use of braided PTFE flex lines for hose is adopted. [AN6 (7/16" OD) line](https://www.efisolutions.com.au/200-series-ptfe-teflon-braided-stainless-steel-hos~50095) from EFI solutions is used (AN5 would be used for the fuel if not for its unavailability from EFI Solutions).
+
+For generic fittings, [Pirtek](https://www.pirtek.com.au/products/hydraulic/adaptors) is used.
+
+For the AN fittings connecting to flex line, EFI solutions is used.
+
 
 ## Analysis
 The simulation models a piston-fed N2O + liquid fuel rocket where a two-phase N2O tank self-pressurises and drives a piston to expel fuel. At each timestep it computes propellant mass flow rates through injector orifices (using incompressible orifice flow), calls rocketCEA to get ideal combustion properties (T0, γ, MW, c*), applies combustion efficiency to get actual c*, then solves the chamber pressure from c* = Pc·At/ṁ. Thrust and Isp follow from the nozzle expansion, and the N2O tank state evolves via an adiabatic energy balance accounting for liquid/vapour phase change.
@@ -94,7 +99,7 @@ Results:
 - N2O pressure drop: 6.308 -> 3.078 MPa
 
 Cold day (10C):
-![[engine_simulation_10C 1.png]]
+![[engine_simulation_10C.png]]
 Results:
 - Burn time: 3.200 s
 - Average / peak thrust: 1587.0 N / 2114.8 N
