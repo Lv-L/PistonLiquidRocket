@@ -114,20 +114,32 @@ class N2OThermoTable:
         Find T such that total internal energy = U_target.
         M_total is the total remaining mass (liquid + vapour) in the tank.
 
-        Uses the same two-phase equilibrium split as __init__ — liquid and vapour
-        masses both vary self-consistently with T, so U(T) is guaranteed monotone.
-        Holding m_liq fixed instead (prior approach) made U(T) non-monotone at
-        low liquid mass, causing interpolation artefacts.
+        Self-consistent phase split at each table temperature:
+          m_liq/rho_liq + m_vap/rho_vap = volume  and  m_liq + m_vap = M_total
+          -> m_liq = (volume - M_total/rho_vap) / (1/rho_liq - 1/rho_vap)
+
+        This split is only physically valid (0 <= m_liq <= M_total, i.e. vapour
+        quality in [0,1]) over a bounded T range for a given M_total/volume --
+        beyond it the fluid would be single-phase superheated vapour, a branch
+        this saturation-only table doesn't cover. Outside that range m_liq would
+        need to go negative, so U(T) computed there is not meaningful and can
+        even reverse direction. Restrict interpolation to the feasible,
+        monotonic slice starting at T_MIN so np.interp never sees that tail.
         """
-        # Self-consistent phase split at each table temperature:
-        #   m_liq/rho_liq + m_vap/rho_vap = volume  and  m_liq + m_vap = M_total
-        # → m_liq = (volume - M_total/rho_vap) / (1/rho_liq - 1/rho_vap)
-        denom   = 1.0 / self.rho_liq - 1.0 / self.rho_vap   # → 0 near critical pt
+        denom   = 1.0 / self.rho_liq - 1.0 / self.rho_vap   # -> 0 near critical pt
         safe_d  = np.where(np.abs(denom) > 1e-9, denom, 1e-9)
-        m_liq_a = np.clip((volume - M_total / self.rho_vap) / safe_d, 0.0, M_total)
+        m_liq_unclipped = (volume - M_total / self.rho_vap) / safe_d
+        feasible = (m_liq_unclipped >= 0.0) & (m_liq_unclipped <= M_total)
+
+        if feasible[0]:
+            n_feas = int(np.argmin(feasible)) if not feasible.all() else len(feasible)
+        else:
+            n_feas = 1   # degenerate fallback; keep at least one point
+
+        m_liq_a = m_liq_unclipped[:n_feas]
         m_vap_a = M_total - m_liq_a
-        U_arr   = m_liq_a * self.u_liq + m_vap_a * self.u_vap
-        return float(np.interp(U_target, U_arr, self.T))
+        U_arr   = m_liq_a * self.u_liq[:n_feas] + m_vap_a * self.u_vap[:n_feas]
+        return float(np.interp(U_target, U_arr, self.T[:n_feas]))
 
 
 _TABLE: Optional[N2OThermoTable] = None
@@ -307,20 +319,29 @@ class EngineConfig:
     # Combined tank volume (ox + fuel sections share one tube separated by a piston).
     # ox_tank_volume and fuel_tank_volume are derived in __post_init__ from this value,
     # the O/F ratio, propellant densities, and ullage fraction.
-    tank_volume      : float         = 5e-3  # m^3  total internal volume (ox + fuel)
-    ox_tank_diam     : float         = 0.09525  # m  (cylindrical tank inner diameter)
-    ox_ullage        : float         = 0.05    # initial vapour volume fraction [-]
-    n2o_init_temp_K  : float         = 20 + 273.15  # K
+    tank_volume      : float         = 5e-3         # m^3  total internal volume (ox + fuel)
+    ox_tank_diam     : float         = 101.6e-3      # m  (cylindrical tank inner diameter)
+    ox_ullage        : float         = 0.05         # initial vapour volume fraction [-]
+    n2o_init_temp_K  : float         = 10 + 273.15  # K
 
 
-    # Injector geometry  (A values = None means auto-sized from design O/F and target dP)
-    # Cd values match HalfCatSim hardware; areas solved analytically to hit
-    # Pc=218.6 psi and O/F=2.77 at 283.15 K N2O with 15 psi piston loss.
-    cd_ox        : float           = 0.5    # discharge coefficient, N2O orifice(s)
-    cd_fuel      : float           = 0.5    # discharge coefficient, fuel orifice(s)
-    A_inj_ox     : Optional[float] = None   # total N2O injector area [m^2]
-    A_inj_fuel   : Optional[float] = None   # total fuel injector area [m^2]
-    inj_target_dp: float           = 0.6     # dP/P_feed fraction used for auto-sizing
+    # Injector geometry — specify as hole diameter x hole count; leave a
+    # hole_diam at None to auto-size that injector's total area instead,
+    # from the design O/F ratio and inj_target_dp.
+    cd_ox          : float           = 0.6    # discharge coefficient, N2O orifice(s)
+    cd_fuel        : float           = 0.6    # discharge coefficient, fuel orifice(s)
+    ox_hole_diam   : Optional[float] = 2e-3   # N2O injector hole diameter [m]; None = auto-size
+    ox_n_holes     : int             = 6      # number of N2O injector holes
+    fuel_hole_diam : Optional[float] = 1.5e-3 # fuel injector hole diameter [m]; None = auto-size
+    fuel_n_holes   : int             = 6      # number of fuel injector holes
+    inj_target_dp  : float           = 0.5    # dP/P_feed fraction used for auto-sizing
+                                              # (used only when the corresponding hole_diam is None)
+
+    # Derived total injector areas [m^2] — set in __post_init__ from the hole
+    # geometry above, or auto-sized (and then back-derived into an equivalent
+    # hole_diam for reporting) if the corresponding hole_diam is None.
+    A_inj_ox     : Optional[float] = field(default=None, init=False)
+    A_inj_fuel   : Optional[float] = field(default=None, init=False)
 
     # Oxidiser (N2O) feed line  — pipe geometry + in-line valve
     ox_line_id       : float = 7.94e-3  # inner diameter [m];  0 = no feed-line loss
@@ -358,7 +379,7 @@ class EngineConfig:
     convergent_half_angle : float = 45.0     # deg  half-angle of converging section
 
     # Nozzle geometry
-    throat_diam      : float = 0.0254   # m
+    throat_diam      : float = 0.025   # m
     AeAt             : float = 4
     exit_diam        : float = throat_diam*AeAt**0.5
 
@@ -406,7 +427,13 @@ class EngineConfig:
         self.chamber_volume = V_cyl + V_conv
         self.L_star = self.chamber_volume / A_t
 
-        # Auto-size injector areas if not provided.
+        # Injector area from hole diameter x count, where specified.
+        if self.ox_hole_diam is not None:
+            self.A_inj_ox = self.ox_n_holes * np.pi / 4.0 * self.ox_hole_diam ** 2
+        if self.fuel_hole_diam is not None:
+            self.A_inj_fuel = self.fuel_n_holes * np.pi / 4.0 * self.fuel_hole_diam ** 2
+
+        # Auto-size whichever total area wasn't set from a hole diameter above.
         # Uses design O/F and target dP to size both injectors proportionally.
         if self.A_inj_ox is None or self.A_inj_fuel is None:
             rho_ox = _CP('D', 'T', self.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
@@ -437,6 +464,13 @@ class EngineConfig:
             if self.A_inj_fuel is None:
                 self.A_inj_fuel = mdot_fuel_nom / (
                     self.cd_fuel * np.sqrt(2.0 * rho_fuel * dp_fuel_nom) + 1e-12)
+
+        # Back-derive an equivalent hole diameter for auto-sized injectors,
+        # so print_config can always report a hole diameter x count.
+        if self.ox_hole_diam is None:
+            self.ox_hole_diam = np.sqrt(4.0 * self.A_inj_ox / (np.pi * self.ox_n_holes))
+        if self.fuel_hole_diam is None:
+            self.fuel_hole_diam = np.sqrt(4.0 * self.A_inj_fuel / (np.pi * self.fuel_n_holes))
 
 
 # ── rocketCEA object cache ────────────────────────────────────────────────────
@@ -717,12 +751,6 @@ class PistonEngine:
         self.A_throat        = A_t
         self.expansion_ratio = A_e / A_t
 
-        self.ox_tank = N2OSelfPressTank(
-            mass   = cfg.ox_mass,
-            volume = cfg.ox_tank_volume,
-            T_init = cfg.n2o_init_temp_K,
-        )
-
         self.time        = 0.0
         self.stop_reason = "propellant exhausted"
 
@@ -780,11 +808,15 @@ class PistonEngine:
         self._gamma_nom = gamma
         self._p_choke   = cfg.p_ambient * ((gamma + 1) / 2.0) ** (gamma / (gamma - 1))
 
-        # ── Balance fuel mass to actual injector O/F ──────────────────────────────
-        # cfg.of_ratio sizes cfg.fuel_mass, but the piston pressure drop (and any
-        # feed-line losses) shift the actual O/F.  Solve for the initial Pc, compute
-        # the true O/F from injector flows, then size fuel_mass to match so both
-        # propellants run out simultaneously.
+        # ── Actual injector O/F (injector orifices + feed-line/valve losses) ──────
+        # cfg.of_ratio only set the *nominal* tank split in EngineConfig; the true
+        # ratio the injectors will deliver depends on K_ox/K_fuel above, which
+        # already fold in feed-line and valve losses. Solve for it here so the
+        # ox/fuel tank split (below) is re-derived from the actual delivered O/F
+        # instead -- this keeps manually-specified injector areas self-consistent
+        # with the loaded propellant masses (previously the fuel mass was balanced
+        # to actual_of but the tank volume it had to fit in was still sized from
+        # cfg.of_ratio, which could raise a spurious "fuel tank too small" error).
         p_sat_0    = _CP('P', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
         p_feed_f_0 = (p_sat_0 - cfg.piston_dp
                       if cfg.ipa_uses_n2o_p else cfg.ipa_pressurant_p)
@@ -793,15 +825,37 @@ class PistonEngine:
         dp_fuel_0  = max(0.0, p_feed_f_0 - p_c_0)
         actual_of  = (self._K_ox * np.sqrt(dp_ox_0)
                       / (self._K_fuel * np.sqrt(dp_fuel_0) + 1e-30))
+        self._actual_of_init = actual_of
+
+        # ── Re-derive ox/fuel tank split from the actual injector O/F ────────────
+        rho_liq_0  = _CP('D', 'T', cfg.n2o_init_temp_K, 'Q', 0, N2O_FLUID)
+        rho_vap_0  = _CP('D', 'T', cfg.n2o_init_temp_K, 'Q', 1, N2O_FLUID)
+        rho_ox_avg = rho_liq_0 * (1.0 - cfg.ox_ullage) + rho_vap_0 * cfg.ox_ullage
+        headspace  = 1.05 if cfg.ipa_uses_n2o_p else 1.25
+        k_ratio = rho_ox_avg * headspace / (actual_of * rho_fuel_nom)
+        cfg.ox_tank_volume   = cfg.tank_volume / (1.0 + k_ratio)
+        cfg.fuel_tank_volume = cfg.tank_volume - cfg.ox_tank_volume
+        cfg.ox_mass   = rho_ox_avg * cfg.ox_tank_volume
+        cfg.fuel_mass = cfg.ox_mass / actual_of
+
+        _ox_A   = np.pi / 4.0 * cfg.ox_tank_diam ** 2
+        _fuel_A = np.pi / 4.0 * cfg.fuel_tank_diam ** 2
+        cfg.ox_tank_length   = cfg.ox_tank_volume   / _ox_A
+        cfg.fuel_tank_length = cfg.fuel_tank_volume / _fuel_A
+        cfg.ox_tube_length   = cfg.ox_tank_volume * (1.0 - cfg.ox_ullage) / _ox_A
+
+        self.ox_tank = N2OSelfPressTank(
+            mass   = cfg.ox_mass,
+            volume = cfg.ox_tank_volume,
+            T_init = cfg.n2o_init_temp_K,
+        )
+
         # Use m_liq (liquid only) — vapour stays as pressurant and never flows out
         fuel_mass_balanced = self.ox_tank.m_liq / actual_of
-        fuel_tank_vol = cfg.fuel_tank_volume
-
-        self._actual_of_init = actual_of
         self.fuel_tank = PistonTank(
             propellant_mass     = fuel_mass_balanced,
             propellant_density  = rho_fuel_nom,
-            tank_volume         = fuel_tank_vol,
+            tank_volume         = cfg.fuel_tank_volume,
             pressurant_pressure = cfg.ipa_pressurant_p,
             blowdown            = cfg.ipa_blowdown,
             polytropic_n        = cfg.ipa_polytropic_n,
@@ -892,7 +946,6 @@ class PistonEngine:
         # Thrust calculation
         cf = self._cf_A - self._cf_B / p_c
         thrust = cf * p_c * self.A_throat
-        isp = thrust / (mdot * G0) if mdot > 0 else 0.0
 
         # Propellant consumption
         dm_ox = mdot_ox * dt
@@ -903,8 +956,45 @@ class PistonEngine:
             1.0,
         )
         dm_ox *= frac;  dm_fuel *= frac
-        mdot *= frac;  thrust *= frac
         mdot_ox *= frac;  mdot_fuel *= frac
+        mdot = mdot_ox + mdot_fuel
+
+        if frac < 1.0:
+            # frac only clamps mass availability for this step -- it doesn't
+            # mean the feed pressure differential (and hence Pc solved above)
+            # was actually achievable. Re-derive Pc self-consistently from the
+            # mass-limited flow via the choked-nozzle relation mdot = k_mdot*Pc,
+            # so thrust/Pc don't decouple during the propellant-depletion tail.
+            p_c = mdot / self._k_mdot
+
+            # The revised Pc can fall below the choke/separation limits that
+            # were only checked against the nominal (unthrottled) Pc earlier
+            # in this step. Re-check now -- neither tank has been drained yet
+            # this step, so it's safe to bail out without further cleanup.
+            if p_c < self._p_choke:
+                self.stop_reason = (
+                    f"nozzle unchoked (Pc={p_c/1e5:.2f} bar < "
+                    f"{self._p_choke/1e5:.2f} bar) during propellant depletion "
+                    f"at t={self.time:.3f} s"
+                )
+                return None
+            if p_c < self._p_c_sep:
+                p_exit = self._pe_over_pc * p_c
+                self.stop_reason = (
+                    f"flow separation during propellant depletion at "
+                    f"t={self.time:.3f} s (Pe={p_exit/1e5:.3f} bar = "
+                    f"{100*p_exit/self.cfg.p_ambient:.1f}% Pa)"
+                )
+                return None
+
+            T_c, _, _, cstar_ideal = combustion_props(
+                self.cfg.fuel, of_actual, p_c, self.expansion_ratio
+            )
+            cstar = cstar_ideal * self.cfg.cstar_eta
+            cf = self._cf_A - self._cf_B / p_c
+            thrust = cf * p_c * self.A_throat
+
+        isp = thrust / (mdot * G0) if mdot > 0 else 0.0
 
         self.ox_tank.consume(dm_ox)
         self.fuel_tank.consume(dm_fuel)
@@ -1004,9 +1094,11 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     if fl_fuel.valve_cda > 0:
         print(f"           valve CdA = {fl_fuel.valve_cda*1e6:.3f} mm²")
     print(f"  Injectors")
-    print(f"    N2O  : A={cfg.A_inj_ox*1e6:.2f} mm²  Cd={cfg.cd_ox:.3f}  "
+    print(f"    N2O  : {cfg.ox_n_holes}x Ø{cfg.ox_hole_diam*1e3:.3f} mm  "
+          f"(A={cfg.A_inj_ox*1e6:.2f} mm²)  Cd={cfg.cd_ox:.3f}  "
           f"CdA={cfg.cd_ox*cfg.A_inj_ox*1e6:.3f} mm²")
-    print(f"    Fuel : A={cfg.A_inj_fuel*1e6:.2f} mm²  Cd={cfg.cd_fuel:.3f}  "
+    print(f"    Fuel : {cfg.fuel_n_holes}x Ø{cfg.fuel_hole_diam*1e3:.3f} mm  "
+          f"(A={cfg.A_inj_fuel*1e6:.2f} mm²)  Cd={cfg.cd_fuel:.3f}  "
           f"CdA={cfg.cd_fuel*cfg.A_inj_fuel*1e6:.3f} mm²")
     print(f"  Nozzle unchoke limit    : {p_choke/1e5:.3f} bar  (Pc at which throat goes subsonic)")
     print(f"  Flow separation limit   : {eng._p_c_sep/1e5:.3f} bar  (Pe < 40% Pa, Summerfield)")
@@ -1042,6 +1134,7 @@ def print_summary(hist: dict, stop_reason: str = "propellant exhausted"):
     print(f"  Avg / peak thrust   : {np.mean(thrust):7.1f} N  /  {max(thrust):.1f} N"
           f"  ({np.mean(thrust)/4.448:.1f} lbf avg)")
     print(f"  Avg Isp             : {np.mean(isp):7.2f} s")
+    print(f"  Avg actual O/F      : {np.mean(hist['of_actual']):7.3f}")
     print(f"  Total impulse       : {J:7.1f} N*s")
     print(f"  Avg c*              : {np.mean(hist['cstar']):7.1f} m/s")
     if hist['n2o_temp']:
@@ -1206,6 +1299,7 @@ def main():
     t0   = time.perf_counter()
     hist = engine.run(dt=args.dt)
     print(f"  Run complete in {time.perf_counter() - t0:.3f} s  ({len(hist['t'])} steps)")
+
     print_summary(hist, engine.stop_reason)
 
     if hist['t']:

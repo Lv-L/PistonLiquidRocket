@@ -11,5 +11,5 @@
 - [[01-Requirements/Requirements]] — top-level requirements
 - [[00-Project/Timeline]] — project milestones
 - [[01-Propulsion System Overview]]
-- [[02-Design/02-Ground Support Equipment/GSE Overview]]
-- [[02-Design/03-Flight Systems/Flight Systems Overview]]
+- [[01-GSE Overview]]
+- [[01-Flight Systems Overview]]

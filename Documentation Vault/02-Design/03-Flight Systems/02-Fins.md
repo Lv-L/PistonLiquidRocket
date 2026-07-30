@@ -1,0 +1,1 @@
+The fins are made of four 1/4" thick plywood pieces cut into a swept profile, ending just after the nozzle. They are mounted to four 25x25x3 mm aluminium brackets, which also serve to connect the thrust chamber to the propellant tank. 

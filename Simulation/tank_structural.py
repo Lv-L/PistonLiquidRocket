@@ -7,9 +7,9 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         '..', 'Documentation Vault', '99-Attachments')
 
 # ── Inputs ─────────────────────────────────────────────────────────────────────
-P           = 7.03e6    # Internal pressure, Pa
-tank_id     = 95.2e-3   # Tank inner diameter, m
-tank_od     = 101.6e-3  # Tank outer diameter, m
+P           = 7.03e6     # Internal pressure, Pa
+tank_id     = 101.6e-3   # Tank inner diameter, m
+tank_t      = 3.2e-3     # Tank thickness, mm
 
 # ── Tank sizing ────────────────────────────────────────────────────────────────
 of_ratio      = 2.0       # Oxidiser/fuel mass ratio
@@ -21,10 +21,10 @@ V_tank_total  = 5.0e-3    # Total tank volume (ox section incl. ullage + fuel se
 
 # Split total volume into ox section (liquid + ullage) and fuel section.
 # rho_ox_avg weights liquid and vapour by ullage fraction.
-n2o_vap_rho   = 50.0      # N2O vapour density at ~25°C, kg/m³ (approximate)
-rho_ox_avg    = n2o_fill_rho * (1.0 - ullage_frac) + n2o_vap_rho * ullage_frac
-k             = rho_ox_avg / (of_ratio * ipa_rho)   # ox_vol / fuel_vol ratio
-V_ox_section  = V_tank_total / (1.0 + k)             # includes ullage
+n2o_vap_rho    = 50.0      # N2O vapour density at ~25°C, kg/m³ (approximate)
+rho_ox_avg     = n2o_fill_rho * (1.0 - ullage_frac) + n2o_vap_rho * ullage_frac
+k              = rho_ox_avg / (of_ratio * ipa_rho)   # ox_vol / fuel_vol ratio
+V_ox_section   = V_tank_total / (1.0 + k)             # includes ullage
 V_fuel_section = V_tank_total - V_ox_section
 
 # Liquid volumes and tube lengths — ullage does NOT add to tube length
@@ -37,6 +37,8 @@ L_fuel_tube = V_fuel_section / A_bore
 # Piston ullage cavity depth (78 mm bore inside piston)
 L_piston_ullage = V_ullage / (np.pi / 4 * ullage_d**2)
 
+tank_od     = tank_id + 2*tank_t  # Tank outer diameter, m
+
 print("--- Tank Sizing -------------------------------------------------------")
 print(f"N2O fill density     : {n2o_fill_rho:.0f} kg/m^3")
 print(f"Ox section volume    : {V_ox_section*1e3:.3f} L  (liquid {V_ox_liq*1e3:.3f} L  +  ullage {V_ullage*1e6:.0f} cm^3)")
@@ -47,9 +49,9 @@ print(f"Ox/fuel tube ratio   : {L_ox_tube/L_fuel_tube:.3f}")
 print(f"Piston ullage cavity : {L_piston_ullage*1e3:.1f} mm deep x {ullage_d*1e3:.0f} mm dia")
 print("----------------------------------------------------------------------")
 print()
-n_bolts     = 8         # Number of radial retaining bolts
-bolt_d      = 8.0e-3    # Bolt major diameter (bearing, shear), m
-hole_d      = 9.0e-3    # Clearance hole diameter (tearout, net section), m
+n_bolts     = 12         # Number of radial retaining bolts
+bolt_d      = 6.0e-3    # Bolt major diameter (bearing, shear), m
+hole_d      = 6.6e-3    # Clearance hole diameter (tearout, net section), m
 e_actual    = 14e-3     # Actual axial edge distance (hole centre to tank end), m
 e_min       = 5.0e-3    # Min edge distance for plot, m
 e_max       = 20.0e-3   # Max edge distance for plot, m
@@ -71,6 +73,15 @@ tauY_bolt   = sigmaY_bolt / np.sqrt(3)               # Bolt shear yield strength
 # Bolt shear strength (single shear at inner wall surface)
 A_bolt       = np.pi / 4 * bolt_d**2
 F_bolt_shear = tauY_bolt * A_bolt
+
+# ── Tank Burst ─────────────────────────────────────────────────────────────────
+# Pressure vessel hoop and axial stress in the plain (un-holed) wall, combined
+# via Von Mises. Outer radius used as a conservative maximum.
+r_o            = tank_od / 2
+sigma_H_burst  = P * r_o / wall_t
+sigma_A_burst  = P * r_o / (2 * wall_t)
+sigma_vm_burst = np.sqrt(sigma_H_burst**2 - sigma_H_burst * sigma_A_burst + sigma_A_burst**2)
+SF_burst       = sigmaY / sigma_vm_burst
 
 # ── Sweep edge distance ────────────────────────────────────────────────────────
 es           = np.linspace(e_min, e_max, npoints)
@@ -102,6 +113,8 @@ print(f"Load per bolt        : {F_per_bolt:.1f} N")
 print(f"Min axial edge dist  : {e_required*1e3:.2f} mm  (tearout, at SF={SF})")
 print(f"  (hole d={hole_d*1e3:.1f} mm, wall t={wall_t*1e3:.1f} mm)")
 print(f"Actual edge distance : {e_actual*1e3:.1f} mm")
+print(f"  Tank burst SF      : {SF_burst:.2f}  ({'OK' if SF_burst >= SF else 'FAIL'})  "
+      f"(VM={sigma_vm_burst*1e-6:.1f} MPa, hoop={sigma_H_burst*1e-6:.1f}, axial={sigma_A_burst*1e-6:.1f})")
 print(f"  Tearout SF         : {SF_tearout_actual:.2f}  ({'OK' if SF_tearout_actual >= SF else 'FAIL'})")
 print(f"  Bolt shear SF      : {SF_shear_actual:.2f}  ({'OK' if SF_shear_actual >= SF else 'FAIL'})")
 print(f"  Net section SF     : {SF_net_actual:.2f}  ({'OK' if SF_net_actual >= SF else 'FAIL'})  (VM={sigma_vm_net*1e-6:.1f} MPa, axial={sigma_net*1e-6:.1f}, hoop={sigma_hoop*1e-6:.1f})")

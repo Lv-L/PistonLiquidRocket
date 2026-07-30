@@ -4,12 +4,12 @@
 <!-- Oxidizer / fuel choices, reasoning -->
 
 ## Performance Targets
-| Parameter       | Value       |
-| --------------- | ----------- |
-| Total impulse   | 5000 Ns     |
-| Liftoff TWR     | 5 (minimum) |
-| Pressure rating | 1000 psi    |
-Total impulse: 5000 Ns to stay under L2 limit of 5120 Ns [(L motor)](https://en.wikipedia.org/wiki/Model_rocket_motor_classification)
+| Parameter       | Value              |
+| --------------- | ------------------ |
+| Total impulse   | ~5000 Ns, <5120 Ns |
+| Liftoff TWR     | 5 (minimum)        |
+| Pressure rating | 1000 psi           |
+Total impulse: 5000 Ns at lowest (highest impulse) ambient temperature to stay under L2 limit of 5120 Ns [(L motor)](https://en.wikipedia.org/wiki/Model_rocket_motor_classification)
 TWR: "at least" 5, from [Tripoli](https://www.tripoli.org/safetycode) - **880 N minimum initial thrust** at an initial mass estimate of 18 kg (from Half Cat, full propellant load)
 Pressure rating: 1000 psi for saturation pressure of N2O at 35 deg C
 ## Fluid System Architecture
@@ -80,7 +80,7 @@ For the purposes of initial analysis, a target injector pressure drop was set at
 
 Inputs (non exhaustive):
 - Tank volume (ox + fuel): 5L
-- Ox tank diameter: 95.2 mm
+- Ox tank diameter: 95.25 mm
 - Ox ullage: 5% by volume
 - Fuel: Ethanol
 - O/F: 2.0
@@ -90,24 +90,18 @@ Inputs (non exhaustive):
 Hot day (30C):
 ![[engine_simulation_30C.png]]
 Results:
-- Burn time: 1.970 s
-- Average / peak thrust: 2300.7 N / 3247.2 N
-- Average Isp: 147.15 s
-- Total impulse : 4511.8 N*s
-- Average c*: 1023.3 m/s
-- N2O temp drop: 30.11 K  (29.5 C -> -0.6 C)
-- N2O pressure drop: 6.308 -> 3.078 MPa
+- Burn time: 2.7 s
+- Avg/peak thrust: 1473.0 N / 1735.5 N
+- Avg Isp: 141.9 s
+- Total impulse: 4006.5 Ns
 
 Cold day (10C):
 ![[engine_simulation_10C.png]]
 Results:
-- Burn time: 3.200 s
-- Average / peak thrust: 1587.0 N / 2114.8 N
-- Average Isp: 142.38 s
-- Total impulse: 5067.6 N*s
-- Average c*: 1022.4 m/s
-- N2O temp drop:  24.33 K  (9.9 C -> -14.4 C)
-- N2O pressure drop: 4.001 -> 2.114 MPa
+- Burn time: 4.29 s
+- Avg/peak thrust: 1143.9 N / 1351.7 N
+- Avg Isp: 137.6 s
+- Total impulse: 4894.2 Ns
 ## Related
 - [[02-Design/03-Ground Support Equipment/GSE Overview]]
 - [[02-Design/04-Flight Systems/Flight Systems Overview]]
