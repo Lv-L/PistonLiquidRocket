@@ -2,13 +2,13 @@
 
 ## Specifications
 
-| Tank specification type     | Spec       | Justification                                                              |
-| --------------------------- | ---------- | -------------------------------------------------------------------------- |
-| Volume (fuel + oxidiser)    | 5 L        | From simulation                                                            |
-| Outer diameter (stock size) | 100 mm     | Accommodates 4" airframe and standard metric stock size                    |
-| Tank material               | Al 6061-T6 | Aluminium for Tripoli rules<br>6061-T6 high strength and good availability |
-| Pressurisation              | Piston     | Pressurised by vapor pressure of N2O (Tripoli)                             |
-| Passive depressurisation    | Vent hole  | To meet passive depressurisation requirement (Tripoli)                     |
+| Tank specification type  | Spec                    | Justification                                                               |
+| ------------------------ | ----------------------- | --------------------------------------------------------------------------- |
+| Volume (fuel + oxidiser) | 5 L                     | From simulation                                                             |
+| Stock size               | 107.6 mm OD 101.6 mm ID | Accommodates 4" airframe and standard metric stock size when machined down. |
+| Tank material            | Al 6061-T6              | Aluminium for Tripoli rules<br>6061-T6 high strength and good availability  |
+| Pressurisation           | Piston                  | Pressurised by vapor pressure of N2O (Tripoli)                              |
+| Passive depressurisation | Vent hole               | To meet passive depressurisation requirement (Tripoli)                      |
 ## Sizing
 
 Total tank volume of 5 L split between ox and fuel sections by O/F mass ratio and liquid densities, with a 5% ullage allowance on the ox side (located in the piston cavity).

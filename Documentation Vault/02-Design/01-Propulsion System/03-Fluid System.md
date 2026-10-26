@@ -1,5 +1,10 @@
 # Oxidiser
 
+## QD - Tank
+- QD fitting (female): 1/8" NPT female
+- Air line fitting: 1/8" NPT male -> xxx tube compression fitting
+
+## Tank - Combustion Chamber
 - Bulkhead: 1/4" NPT female
 - Nipple: 1/4" NPT male -> 1/4" NPT male
 - Main valve: 1/4" NPT female -> 1/4" NPT female

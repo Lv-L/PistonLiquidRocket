@@ -1,7 +1,7 @@
 # Flight Systems Overview
 
 ## Airframe
-<!-- Materials, dimensions, L2 integration -->
+The airframe tubes and nosecone are made of fibreglass. For the tubes, an inner diameter of 101.6 mm is used, allowing for 4 inch aluminium tube stock to be used as a mandrel.
 
 ## Structures
 <!-- Engine mount, tank mounts, load paths -->

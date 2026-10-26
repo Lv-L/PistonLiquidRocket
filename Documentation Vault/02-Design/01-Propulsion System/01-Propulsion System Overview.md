@@ -34,18 +34,18 @@ A comparison of potential fuel types is summarised below:
 | Methanol                | Poor     | [$2.5/L](https://www.sydneysolvents.com.au/methanol-20-litre)                        | Delivery              | ~           | Almost invisible light blue  | "Should not be used" - Half Cat |
 On the basis of safety, the use of methanol was ruled out due to its high toxicity.
 
-For propellants, ethanol and E85 were chosen. Ethanol for its performance and lack of residue, and E85 for "show", with it having a more visible orange flame. Given that E85 has lower performance, the ethanol case will be used to establish a conservative "upper limit" of performance.
+For propellants, ethanol was chosen for its high performance and availability.
 
 ![[tc_isp_vs_lambda.png]]
 
 An OF of 2 will be used initially to reduce flame temperature with a small penalty in Isp. For ethanol, an OF ratio of 2 results in an adiabatic flame temperature of 2828 K and an Isp of 252 s. This means a penalty of 8 s of Isp gives a temperature reduction of 489 K (with ethanol's peak Isp being 260 s at an adiabatic flame temperature of 3317 K).
 
 ### Nozzle
-The nozzle throat diameter and expansion ratio were copied from Half Cat:
+The nozzle throat diameter and expansion ratio were copied taken Half Cat:
 
 | Variable             | Value |
 | -------------------- | ----- |
-| Throat diameter (mm) | 25.4  |
+| Throat diameter (mm) | 25    |
 | Expansion Ratio      | 4     |
 
 ### Combustion Chamber
@@ -71,8 +71,6 @@ Half Cat's use of braided PTFE flex lines for hose is adopted. [AN6 (7/16" OD) l
 For generic fittings, [Pirtek](https://www.pirtek.com.au/products/hydraulic/adaptors) is used.
 
 For the AN fittings connecting to flex line, EFI solutions is used.
-
-
 ## Analysis
 The simulation models a piston-fed N2O + liquid fuel rocket where a two-phase N2O tank self-pressurises and drives a piston to expel fuel. At each timestep it computes propellant mass flow rates through injector orifices (using incompressible orifice flow), calls rocketCEA to get ideal combustion properties (T0, γ, MW, c*), applies combustion efficiency to get actual c*, then solves the chamber pressure from c* = Pc·At/ṁ. Thrust and Isp follow from the nozzle expansion, and the N2O tank state evolves via an adiabatic energy balance accounting for liquid/vapour phase change.
 
@@ -80,7 +78,7 @@ For the purposes of initial analysis, a target injector pressure drop was set at
 
 Inputs (non exhaustive):
 - Tank volume (ox + fuel): 5L
-- Ox tank diameter: 95.25 mm
+- Ox tank diameter: 101.6 mm
 - Ox ullage: 5% by volume
 - Fuel: Ethanol
 - O/F: 2.0
