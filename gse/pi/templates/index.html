@@ -48,62 +48,110 @@
       <button id="btn-logout" type="button" class="ghost">Sign out</button>
     </form>
 
-    <div class="tabs">
-      <button id="tab-test" type="button" class="tab active">Test checkout</button>
-      <button id="tab-fire" type="button" class="tab">Fire sequence</button>
-    </div>
+    <section class="sheet" aria-label="Piping and instrumentation diagram">
+      <div class="plant">
+        <div class="field gse"><span class="field-name">GSE · stays on the pad</span></div>
+        <div class="field veh"><span class="field-name">Vehicle · flies away</span></div>
 
-    <section id="panel-test" class="panel">
-      <p class="lede">Each valve moves on its own. The ignitor pulse is a short click and only runs with every valve closed.</p>
-      <div class="valves">
-        <article class="card">
-          <h2>Fill</h2>
-          <p class="where">Pad · Arduino</p>
-          <p id="valve-fill" class="position">Closed</p>
-          <div class="row">
-            <button id="btn-fill-open" type="button" data-valve="fill" data-position="open">Open</button>
-            <button id="btn-fill-close" type="button" data-valve="fill" data-position="close" class="safe">Close</button>
+        <div class="bottle">
+          <svg viewBox="0 0 70 118" aria-hidden="true">
+            <rect x="24" y="2" width="22" height="14" rx="3"></rect>
+            <rect x="30" y="14" width="10" height="12"></rect>
+            <rect x="14" y="24" width="42" height="86" rx="18"></rect>
+          </svg>
+          <span>Nitrous supply bottle</span>
+        </div>
+
+        <i class="spine"></i>
+        <article class="manual" aria-label="Bottle valve, manual">
+          <i class="wheel"></i>
+          <span>Bottle valve<small>Manual</small></span>
+        </article>
+
+        <div class="gauge fill-pt" aria-label="Fill line pressure, no transducer yet">
+          <i class="riser"></i>
+          <b>Fill-line PT</b>
+          <span class="dial"><i></i></span>
+          <em>—</em>
+        </div>
+
+        <article id="pid-fill" class="valve h">
+          <i class="slug"></i>
+          <div class="tag">
+            <strong>Fill valve</strong>
+            <span>Control: <b class="pid-state">Closed</b></span>
+            <button class="cmd open" type="button" data-valve="fill" data-position="open">Open fill valve</button>
+            <button class="cmd shut" type="button" data-valve="fill" data-position="close">Close fill valve</button>
           </div>
         </article>
-        <article class="card">
-          <h2>Purge</h2>
-          <p class="where">Pad · Arduino</p>
-          <p id="valve-purge" class="position">Closed</p>
-          <div class="row">
-            <button id="btn-purge-open" type="button" data-valve="purge" data-position="open">Open</button>
-            <button id="btn-purge-close" type="button" data-valve="purge" data-position="close" class="safe">Close</button>
+
+        <i class="stem"></i>
+        <article id="pid-purge" class="valve v">
+          <i class="slug"></i>
+          <div class="tag">
+            <strong>Purge valve</strong>
+            <span>Control: <b class="pid-state">Closed</b></span>
+            <span class="hint">Vents the fill line</span>
+            <button class="cmd open" type="button" data-valve="purge" data-position="open">Open purge</button>
+            <button class="cmd shut" type="button" data-valve="purge" data-position="close">Close purge</button>
           </div>
         </article>
-        <article class="card">
-          <h2>Ox main</h2>
-          <p class="where">Vehicle · ESP32</p>
-          <p id="valve-ox" class="position">Closed</p>
-          <div class="row">
-            <button id="btn-ox-open" type="button" data-valve="ox" data-position="open">Open</button>
-            <button id="btn-ox-close" type="button" data-valve="ox" data-position="close" class="safe">Close</button>
+        <span class="atm">Atmosphere</span>
+
+        <div class="qd">
+          <span class="collar"></span>
+          <span class="collar"></span>
+          <strong>QD</strong>
+          <small>Uncouple here</small>
+        </div>
+
+        <i class="spine veh-in"></i>
+        <div class="vessel" aria-hidden="true"><span>Fuel</span><span>Ox</span></div>
+        <div class="gauge tank-pt" aria-label="Ox tank pressure, no transducer yet">
+          <b>Ox tank PT</b>
+          <span class="dial"><i></i></span>
+          <em>—</em>
+        </div>
+
+        <i class="riser-join"></i>
+        <i class="fuel-line"></i>
+        <i class="ox-line"></i>
+        <article id="pid-fuel" class="valve h">
+          <i class="slug"></i>
+          <div class="tag">
+            <strong>Fuel main</strong>
+            <span>Vehicle · <b class="pid-state">Closed</b></span>
+            <button class="cmd open" type="button" data-valve="fuel" data-position="open">Open fuel</button>
+            <button class="cmd shut" type="button" data-valve="fuel" data-position="close">Close fuel</button>
           </div>
         </article>
-        <article class="card">
-          <h2>Fuel main</h2>
-          <p class="where">Vehicle · ESP32</p>
-          <p id="valve-fuel" class="position">Closed</p>
-          <div class="row">
-            <button id="btn-fuel-open" type="button" data-valve="fuel" data-position="open">Open</button>
-            <button id="btn-fuel-close" type="button" data-valve="fuel" data-position="close" class="safe">Close</button>
+        <article id="pid-ox" class="valve h">
+          <i class="slug"></i>
+          <div class="tag below">
+            <strong>Ox main</strong>
+            <span>Vehicle · <b class="pid-state">Closed</b></span>
+            <button class="cmd open" type="button" data-valve="ox" data-position="open">Open ox</button>
+            <button class="cmd shut" type="button" data-valve="ox" data-position="close">Close ox</button>
           </div>
+        </article>
+        <i class="manifold"></i>
+        <div class="engine">
+          <svg viewBox="0 0 54 78" aria-hidden="true"><rect x="10" y="2" width="34" height="36" rx="4"></rect><polygon points="16,38 38,38 32,74 22,74"></polygon></svg>
+          <span>Engine</span>
+        </div>
+        <article id="pid-ignitor" class="igniter">
+          <strong>Igniter</strong>
+          <span class="pid-state">Off</span>
+          <button id="btn-relay" class="cmd" type="button">Pulse</button>
         </article>
       </div>
-      <article class="card relay-card">
-        <div>
-          <h2>Ignitor relay</h2>
-          <p class="where">Pad · Arduino · high output turns the relay on</p>
-        </div>
-        <button id="btn-relay" type="button">Pulse ignitor</button>
-      </article>
+      <p class="legend">Red band is closed. Blue band is open. The bottle valve is manual. Fill and purge are GSE. Fuel and ox mains are the vehicle. Gauges read — until a transducer is fitted.</p>
     </section>
 
-    <section id="panel-fire" class="panel" hidden>
-      <p class="lede">One sequence. Abort closes every valve and drops the ignitor.</p>
+
+    <section id="panel-fire" class="panel card">
+      <h2>Fire sequence</h2>
+      <p class="lede">One sequence. Abort closes every valve and drops the igniter.</p>
       <ol class="steps">
         <li id="step-ignitor"><span>1</span><div><strong>Fire ignitor</strong><p>Relay output goes high.</p></div></li>
         <li id="step-wait"><span>2</span><div><strong id="step-wait-label">Wait 2 seconds</strong><p>Mains stay closed during the wait.</p></div></li>

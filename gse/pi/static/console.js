@@ -74,11 +74,10 @@ function render(state) {
   document.querySelector(".top").classList.toggle("sequence-hot", ["ignitor", "wait", "valves"].includes(state.phase));
 
   ["fill", "purge", "ox", "fuel"].forEach(function (name) {
-    const node = document.getElementById("valve-" + name);
     const open = state.valves[name] === "open";
-    node.textContent = open ? "Open" : "Closed";
-    node.className = open ? "position open" : "position closed";
+    markPid("pid-" + name, open, open ? "Open" : "Closed");
   });
+  markPid("pid-ignitor", state.relay, state.relay ? "Hot" : "Off");
 
   const hot = ["ignitor", "wait", "valves"].includes(state.phase);
   const canMove = state.armed && !hot;
@@ -110,6 +109,14 @@ function render(state) {
   });
 
   setBanner(stickyError || state.message);
+}
+
+function markPid(id, on, label) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.classList.toggle("is-open", on);
+  const state = node.querySelector(".pid-state");
+  if (state) state.textContent = label;
 }
 
 function markLink(id, name, up) {
@@ -163,20 +170,6 @@ document.getElementById("btn-logout").addEventListener("click", async function (
   await post("/api/abort");
   await fetch("/api/logout", { method: "POST" });
   showLogin();
-});
-
-document.getElementById("tab-test").addEventListener("click", function () {
-  document.getElementById("panel-test").hidden = false;
-  document.getElementById("panel-fire").hidden = true;
-  document.getElementById("tab-test").classList.add("active");
-  document.getElementById("tab-fire").classList.remove("active");
-});
-
-document.getElementById("tab-fire").addEventListener("click", function () {
-  document.getElementById("panel-test").hidden = true;
-  document.getElementById("panel-fire").hidden = false;
-  document.getElementById("tab-test").classList.remove("active");
-  document.getElementById("tab-fire").classList.add("active");
 });
 
 document.querySelectorAll("[data-valve]").forEach(function (button) {
