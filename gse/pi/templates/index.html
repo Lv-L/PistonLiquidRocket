@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GSE</title>
+  <link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+  <section id="screen-login">
+    <form id="login-form" class="card login-card" autocomplete="on">
+      <p class="eyebrow">Piston liquid rocket</p>
+      <h1>Ground support</h1>
+      <p class="lede">Sign on to the pad console. Arming is a separate step.</p>
+      <label>Operator
+        <input id="login-user" name="username" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="login-submit" type="submit">Sign on</button>
+      <p id="login-error" class="banner" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <section id="screen-console" hidden>
+    <header class="top">
+      <div>
+        <p class="eyebrow">Piston liquid rocket</p>
+        <h1>Ground support</h1>
+      </div>
+      <div class="pills">
+        <span id="link-arduino" class="pill">Arduino down</span>
+        <span id="link-esp32" class="pill">ESP32 down</span>
+        <span id="arm-state" class="pill">Safe</span>
+        <span id="ignitor-state" class="pill">Ignitor off</span>
+      </div>
+      <button id="btn-abort" type="button">Abort</button>
+    </header>
+
+    <p id="banner" class="banner" role="status" hidden></p>
+
+    <form id="arm-form" class="arm-row card" autocomplete="off">
+      <label>Arm code
+        <input id="arm-code" type="password" inputmode="numeric" maxlength="8" autocomplete="off" spellcheck="false" aria-label="Arm code">
+      </label>
+      <button id="arm-submit" type="submit">Arm</button>
+      <button id="btn-logout" type="button" class="ghost">Sign out</button>
+    </form>
+
+    <div class="tabs">
+      <button id="tab-test" type="button" class="tab active">Test checkout</button>
+      <button id="tab-fire" type="button" class="tab">Fire sequence</button>
+    </div>
+
+    <section id="panel-test" class="panel">
+      <p class="lede">Each valve moves on its own. The ignitor pulse is a short click and only runs with every valve closed.</p>
+      <div class="valves">
+        <article class="card">
+          <h2>Fill</h2>
+          <p class="where">Pad · Arduino</p>
+          <p id="valve-fill" class="position">Closed</p>
+          <div class="row">
+            <button id="btn-fill-open" type="button" data-valve="fill" data-position="open">Open</button>
+            <button id="btn-fill-close" type="button" data-valve="fill" data-position="close" class="safe">Close</button>
+          </div>
+        </article>
+        <article class="card">
+          <h2>Purge</h2>
+          <p class="where">Pad · Arduino</p>
+          <p id="valve-purge" class="position">Closed</p>
+          <div class="row">
+            <button id="btn-purge-open" type="button" data-valve="purge" data-position="open">Open</button>
+            <button id="btn-purge-close" type="button" data-valve="purge" data-position="close" class="safe">Close</button>
+          </div>
+        </article>
+        <article class="card">
+          <h2>Ox main</h2>
+          <p class="where">Vehicle · ESP32</p>
+          <p id="valve-ox" class="position">Closed</p>
+          <div class="row">
+            <button id="btn-ox-open" type="button" data-valve="ox" data-position="open">Open</button>
+            <button id="btn-ox-close" type="button" data-valve="ox" data-position="close" class="safe">Close</button>
+          </div>
+        </article>
+        <article class="card">
+          <h2>Fuel main</h2>
+          <p class="where">Vehicle · ESP32</p>
+          <p id="valve-fuel" class="position">Closed</p>
+          <div class="row">
+            <button id="btn-fuel-open" type="button" data-valve="fuel" data-position="open">Open</button>
+            <button id="btn-fuel-close" type="button" data-valve="fuel" data-position="close" class="safe">Close</button>
+          </div>
+        </article>
+      </div>
+      <article class="card relay-card">
+        <div>
+          <h2>Ignitor relay</h2>
+          <p class="where">Pad · Arduino · high output turns the relay on</p>
+        </div>
+        <button id="btn-relay" type="button">Pulse ignitor</button>
+      </article>
+    </section>
+
+    <section id="panel-fire" class="panel" hidden>
+      <p class="lede">One sequence. Abort closes every valve and drops the ignitor.</p>
+      <ol class="steps">
+        <li id="step-ignitor"><span>1</span><div><strong>Fire ignitor</strong><p>Relay output goes high.</p></div></li>
+        <li id="step-wait"><span>2</span><div><strong id="step-wait-label">Wait 2 seconds</strong><p>Mains stay closed during the wait.</p></div></li>
+        <li id="step-valves"><span>3</span><div><strong>Open both main valves</strong><p>Ox and fuel open together. Fill and purge stay where they are.</p></div></li>
+      </ol>
+      <p id="phase-label" class="phase">Idle</p>
+      <button id="btn-fire" type="button" disabled>Start fire sequence</button>
+    </section>
+
+    <section class="card connect">
+      <h2>Controllers</h2>
+      <p id="mock-note" class="where" hidden>Simulated controllers. No boards are attached.</p>
+      <div class="connect-grid">
+        <label>Arduino USB
+          <input id="arduino-port" value="/dev/ttyACM0" spellcheck="false" autocomplete="off">
+        </label>
+        <button id="connect-arduino" type="button">Connect Arduino</button>
+        <label>ESP32 Bluetooth address
+          <input id="esp32-mac" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false" autocomplete="off">
+        </label>
+        <button id="connect-esp32" type="button">Connect ESP32</button>
+        <label>ESP32 USB bench port
+          <input id="esp32-port" placeholder="Leave empty to use Bluetooth" spellcheck="false" autocomplete="off">
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <ol id="event-log"></ol>
+    </section>
+
+    <div id="confirm" class="modal" hidden>
+      <div class="card modal-card">
+        <h2>Start fire sequence</h2>
+        <p>The ignitor relay turns on. After 2 seconds the ox and fuel main valves open.</p>
+        <div class="row">
+          <button id="confirm-cancel" type="button" class="ghost">Cancel</button>
+          <button id="confirm-start" type="button">Start sequence</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/static/console.js"></script>
+</body>
+</html>
