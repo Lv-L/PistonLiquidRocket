@@ -70,6 +70,9 @@ function render(state) {
 
   markLink("link-arduino", "Arduino", state.links.arduino, (state.heard || {}).arduino);
   markLink("link-esp32", "ESP32", state.links.esp32, (state.heard || {}).esp32);
+  document.getElementById("side-arduino").classList.toggle("down", !state.links.arduino);
+  document.getElementById("side-esp32").classList.toggle("down", !state.links.esp32);
+  document.getElementById("pid-ignitor").classList.toggle("down", !state.links.arduino);
 
   const arm = document.getElementById("arm-state");
   arm.textContent = state.armed ? "Armed " + state.arm_remaining_s + "s" : "Safe";

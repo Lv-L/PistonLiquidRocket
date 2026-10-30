@@ -191,6 +191,37 @@ button.safe { background: #243228; color: var(--safe); }
   background: #f5fafd;
   border-radius: 8px;
 }
+.side, .side-body {
+  position: absolute;
+  inset: 0;
+}
+.side { pointer-events: none; }
+.side .valve, .side .igniter, .side .cmd { pointer-events: auto; }
+.side.down .field {
+  background: rgba(120, 132, 144, 0.22);
+  border-color: #9aa7b2;
+}
+.side.down .side-body {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+.side.down .cmd { pointer-events: none; }
+.link-flag {
+  display: none;
+  position: absolute;
+  z-index: 8;
+  top: 392px;
+  margin: 0;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  background: #1c2430;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.side.down .link-flag { display: block; }
+.pad-side .link-flag { left: 17%; }
+.veh-side .link-flag { left: 64%; }
 .field {
   position: absolute;
   top: 28px;
@@ -443,6 +474,7 @@ button.safe { background: #243228; color: var(--safe); }
   font-size: 0.82rem;
 }
 .igniter.is-open strong, .igniter.is-open .pid-state { color: #c62828; }
+.igniter.down { filter: grayscale(1); opacity: 0.4; }
 .legend { margin: 0.65rem 0.2rem 0; color: #4d5e6c; font-size: 0.84rem; }
 #panel-fire { margin-bottom: 1rem; }
 #panel-fire h2 { margin-bottom: 0.4rem; }

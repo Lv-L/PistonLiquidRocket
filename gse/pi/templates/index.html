@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GSE</title>
-  <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/console.css?v=sides">
 </head>
 <body>
   <section id="screen-login">
@@ -52,9 +52,10 @@
 
     <section class="sheet" aria-label="Piping and instrumentation diagram">
       <div class="plant">
-        <div class="field gse"><span class="field-name">GSE · stays on the pad</span></div>
-        <div class="field veh"><span class="field-name">Vehicle · flies away</span></div>
-
+        <div id="side-arduino" class="side pad-side">
+          <div class="field gse"><span class="field-name">GSE · stays on the pad</span></div>
+          <p class="link-flag">Arduino not connected</p>
+          <div class="side-body">
         <div class="bottle">
           <svg viewBox="0 0 70 118" aria-hidden="true">
             <rect x="24" y="2" width="22" height="14" rx="3"></rect>
@@ -99,6 +100,8 @@
           </div>
         </article>
         <span class="atm">Atmosphere</span>
+          </div>
+        </div>
 
         <div class="qd">
           <span class="collar"></span>
@@ -107,6 +110,10 @@
           <small>Uncouple here</small>
         </div>
 
+        <div id="side-esp32" class="side veh-side">
+          <div class="field veh"><span class="field-name">Vehicle · flies away</span></div>
+          <p class="link-flag">ESP32 not connected</p>
+          <div class="side-body">
         <i class="spine veh-in"></i>
         <div class="vessel" aria-hidden="true"><span>Fuel</span><span>Ox</span></div>
         <div class="gauge tank-pt" aria-label="Ox tank pressure, no transducer yet">
@@ -141,13 +148,15 @@
           <svg viewBox="0 0 54 78" aria-hidden="true"><rect x="10" y="2" width="34" height="36" rx="4"></rect><polygon points="16,38 38,38 32,74 22,74"></polygon></svg>
           <span>Engine</span>
         </div>
+          </div>
+        </div>
         <article id="pid-ignitor" class="igniter">
           <strong>Igniter</strong>
           <span class="pid-state">Off</span>
           <button id="btn-relay" class="cmd" type="button">Pulse</button>
         </article>
       </div>
-      <p class="legend">Red band is closed. Blue band is open. The bottle valve is manual. Fill and purge are GSE. Fuel and ox mains are the vehicle. Gauges read — until a transducer is fitted.</p>
+      <p class="legend">Red band is closed. Blue band is open. The bottle valve is manual. Fill and purge are GSE. Fuel and ox mains are the vehicle. A grey half is the board that is not connected. The igniter follows the Arduino. Gauges read — until a transducer is fitted.</p>
     </section>
 
 
@@ -198,6 +207,6 @@
     </div>
   </section>
 
-  <script src="/static/console.js"></script>
+  <script src="/static/console.js?v=sides"></script>
 </body>
 </html>
