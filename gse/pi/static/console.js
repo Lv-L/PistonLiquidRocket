@@ -68,8 +68,8 @@ function render(state) {
   loginScreen.hidden = true;
   consoleScreen.hidden = false;
 
-  markLink("link-arduino", "Arduino", state.links.arduino);
-  markLink("link-esp32", "ESP32", state.links.esp32);
+  markLink("link-arduino", "Arduino", state.links.arduino, (state.heard || {}).arduino);
+  markLink("link-esp32", "ESP32", state.links.esp32, (state.heard || {}).esp32);
 
   const arm = document.getElementById("arm-state");
   arm.textContent = state.armed ? "Armed " + state.arm_remaining_s + "s" : "Safe";
@@ -128,10 +128,24 @@ function markPid(id, on, label) {
   if (state) state.textContent = label;
 }
 
-function markLink(id, name, up) {
+const linkHeard = {};
+
+function markLink(id, name, up, heard) {
   const node = document.getElementById(id);
   node.textContent = name + (up ? " up" : " down");
-  node.className = up ? "pill up" : "pill";
+  node.classList.toggle("up", !!up);
+  if (!node.dataset.pulseBound) {
+    node.dataset.pulseBound = "1";
+    node.addEventListener("animationend", function () {
+      node.classList.remove("pulse");
+    });
+  }
+  if (up && linkHeard[id] !== undefined && heard !== linkHeard[id]) {
+    node.classList.remove("pulse");
+    void node.offsetWidth;
+    node.classList.add("pulse");
+  }
+  linkHeard[id] = heard;
 }
 
 function markSteps(phase) {

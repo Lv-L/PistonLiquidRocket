@@ -141,6 +141,11 @@ button.safe { background: #243228; color: var(--safe); }
 }
 
 .pill.up { color: var(--safe); border-color: #3e5a40; }
+.pill.pulse { animation: link-pulse 0.45s ease-out; }
+@keyframes link-pulse {
+  0% { background: #d5e07a; color: #172012; border-color: #d5e07a; }
+  100% { background: transparent; color: var(--safe); border-color: #3e5a40; }
+}
 .pill.armed { color: #1b1608; background: var(--arm); border-color: var(--arm); }
 .pill.hot { color: white; background: var(--hot); border-color: var(--hot); }
 

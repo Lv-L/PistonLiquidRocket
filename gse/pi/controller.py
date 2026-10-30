@@ -36,6 +36,7 @@ class GseController:
         self.relay = False
         self.valves = {"fill": False, "purge": False, "ox": False, "fuel": False}
         self.links = {"arduino": False, "esp32": False}
+        self.heard = {"arduino": 0, "esp32": 0}
         self.message = ""
         self.events = []
         self.arm_fails = 0
@@ -248,6 +249,7 @@ class GseController:
                 "relay": self.relay,
                 "valves": {name: ("open" if on else "closed") for name, on in self.valves.items()},
                 "links": dict(self.links),
+                "heard": dict(self.heard),
                 "message": self.message,
                 "events": list(self.events),
                 "fire_delay_s": config.FIRE_DELAY_S,
@@ -382,6 +384,7 @@ class GseController:
         with self.state:
             if parts[1] == "pad":
                 self.links["arduino"] = True
+                self.heard["arduino"] += 1
                 if "relay" in fields:
                     self.relay = fields["relay"] == "1"
                 for name in ("fill", "purge"):
@@ -389,6 +392,7 @@ class GseController:
                         self.valves[name] = fields[name] == "OPEN"
             elif parts[1] == "vehicle":
                 self.links["esp32"] = True
+                self.heard["esp32"] += 1
                 for name in ("ox", "fuel"):
                     if name in fields:
                         self.valves[name] = fields[name] == "OPEN"
