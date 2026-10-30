@@ -22,6 +22,7 @@
 static const int PIN_FILL = 9;
 static const int PIN_PURGE = 10;
 static const int PIN_RELAY = 4;
+static const int PIN_LED = 13;
 static const bool RELAY_ON_IS_HIGH = true;
 
 static const int CLOSE_US = 1000;
@@ -49,14 +50,30 @@ void setRelay(bool on) {
   digitalWrite(PIN_RELAY, high ? HIGH : LOW);
 }
 
+void updateLed() {
+  // The Uno's L LED follows the pad valves, so a servo can be ruled out
+  // without a second tool. Solid means fill is open. Blinking means purge is open.
+  if (fillOpen) {
+    digitalWrite(PIN_LED, HIGH);
+    return;
+  }
+  if (purgeOpen) {
+    digitalWrite(PIN_LED, (millis() / 200) & 1 ? HIGH : LOW);
+    return;
+  }
+  digitalWrite(PIN_LED, LOW);
+}
+
 void setFill(bool openValve) {
   fillOpen = openValve;
   fillServo.writeMicroseconds(openValve ? OPEN_US : CLOSE_US);
+  updateLed();
 }
 
 void setPurge(bool openValve) {
   purgeOpen = openValve;
   purgeServo.writeMicroseconds(openValve ? OPEN_US : CLOSE_US);
+  updateLed();
 }
 
 void safeAll() {
@@ -147,7 +164,9 @@ void handle(char *cmd) {
 
 void setup() {
   pinMode(PIN_RELAY, OUTPUT);
+  pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_RELAY, RELAY_ON_IS_HIGH ? LOW : HIGH);
+  digitalWrite(PIN_LED, LOW);
   fillServo.attach(PIN_FILL);
   purgeServo.attach(PIN_PURGE);
   safeAll();
@@ -181,6 +200,8 @@ void loop() {
       overflow = true;
     }
   }
+
+  updateLed();
 
   if (armed && (millis() - lastCommandMs) > WATCHDOG_MS) {
     safeAll();
