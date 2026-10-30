@@ -165,11 +165,10 @@ def _boot_links():
         except GseError:
             pass
         return
-    if config.ARDUINO_PORT:
-        try:
-            controller.connect_arduino(config.ARDUINO_PORT)
-        except Exception:
-            pass
+    try:
+        controller.reconnect_arduino()
+    except Exception:
+        pass
     if config.ESP32_MAC or config.ESP32_PORT:
         try:
             controller.connect_esp32(mac=config.ESP32_MAC, port=config.ESP32_PORT)

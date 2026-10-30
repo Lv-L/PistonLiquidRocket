@@ -28,6 +28,8 @@ RELAY_PULSE_S = 0.3
 
 ARDUINO_PORT = os.environ.get("GSE_ARDUINO_PORT", "/dev/ttyACM0")
 ARDUINO_BAUD = 115200
+# How often to look for the Uno again after it drops off USB.
+ARDUINO_SCAN_S = float(os.environ.get("GSE_ARDUINO_SCAN", "3"))
 # Vehicle link. MAC is classic Bluetooth (GSE-VEHICLE). Port is USB bench only.
 ESP32_MAC = os.environ.get("GSE_ESP32_MAC", "")
 ESP32_PORT = os.environ.get("GSE_ESP32_PORT", "")

@@ -113,9 +113,27 @@ def test_pages_do_not_contain_the_arm_code():
         assert config.OPERATOR_PASSWORD not in text
 
 
+def test_arduino_ports_prefer_the_arduino_link():
+    import tempfile
+    from ports import arduino_port_candidates
+
+    with tempfile.TemporaryDirectory() as root:
+        by_id = Path(root) / "by-id"
+        by_id.mkdir()
+        uno = by_id / "usb-Arduino_Uno-if00"
+        other = by_id / "usb-NotABoard-if00"
+        uno.write_text("", encoding="utf-8")
+        other.write_text("", encoding="utf-8")
+        preferred = Path(root) / "configured"
+        preferred.write_text("", encoding="utf-8")
+        found = arduino_port_candidates(str(preferred), by_id_dir=str(by_id), device_globs=())
+    assert found == [str(uno), str(preferred)]
+
+
 if __name__ == "__main__":
     test_rejects_bad_code_and_closed_valves()
     test_abort_during_wait_keeps_mains_closed()
     test_fire_opens_mains_after_two_seconds()
     test_pages_do_not_contain_the_arm_code()
+    test_arduino_ports_prefer_the_arduino_link()
     print("ok")

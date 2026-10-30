@@ -5,6 +5,7 @@ import time
 
 import config
 from links import LinkError
+from ports import arduino_port_candidates
 
 
 class GseError(Exception):
@@ -43,6 +44,7 @@ class GseController:
         self.fire_thread = None
         self.ignitor_on = 0.0
         self._last_poll = 0.0
+        self._last_scan = time.monotonic()
         self.supervisor = threading.Thread(target=self._supervise, name="gse-supervisor", daemon=True)
         self.supervisor.start()
 
@@ -72,11 +74,41 @@ class GseController:
                     self.links["arduino"] = True
                     self.message = "Arduino connected"
                 self._push_arm_if_needed(self.arduino)
+                return True
         except GseError:
             raise
         except Exception as exc:
             self._mark_down("arduino")
             raise GseError("Arduino did not connect: " + str(exc)[:160]) from exc
+
+    def reconnect_arduino(self):
+        """Open whichever port currently answers as the pad Uno."""
+        for port in arduino_port_candidates(config.ARDUINO_PORT):
+            if self._claim_arduino(port):
+                return True
+        self._mark_down("arduino")
+        return False
+
+    def _claim_arduino(self, port):
+        with self.hw:
+            with self.state:
+                if self.sequence_active or self.phase in ACTIVE:
+                    return False
+            try:
+                self.arduino.connect(port, config.ARDUINO_BAUD, config.SERIAL_TIMEOUT_S)
+                reply = self.arduino.send("PING")
+            except Exception:
+                self.arduino.close()
+                return False
+            if reply != "OK PONG":
+                self.arduino.close()
+                return False
+            with self.state:
+                self.links["arduino"] = True
+                self.message = "Arduino connected"
+                self._note("Arduino connected")
+            self._push_arm_if_needed(self.arduino)
+            return True
 
     def connect_esp32(self, mac="", port=""):
         try:
@@ -276,15 +308,27 @@ class GseController:
 
     def _supervise(self):
         while not self.stop.wait(0.2):
+            now = time.monotonic()
             self._check_timers()
-            if time.monotonic() - self._last_poll >= config.STATUS_POLL_S:
-                self._last_poll = time.monotonic()
+            if now - self._last_poll >= config.STATUS_POLL_S:
+                self._last_poll = now
                 if self.hw.acquire(blocking=False):
                     try:
                         self._poll("arduino", self.arduino)
                         self._poll("esp32", self.esp32)
                     finally:
                         self.hw.release()
+            self._scan_for_arduino(now)
+
+    def _scan_for_arduino(self, now):
+        if now - self._last_scan < config.ARDUINO_SCAN_S:
+            return
+        with self.state:
+            need = not self.links["arduino"] and not self.sequence_active and self.phase not in ACTIVE
+        if not need:
+            return
+        self._last_scan = now
+        self.reconnect_arduino()
 
     def _check_timers(self):
         with self.state:
