@@ -1,0 +1,14 @@
+[Unit]
+Description=Connect Wi-Fi, then pull the GSE pad code
+After=NetworkManager.service network.target
+Wants=NetworkManager.service network.target
+Before=gse-console.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gse-update
+RemainAfterExit=yes
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

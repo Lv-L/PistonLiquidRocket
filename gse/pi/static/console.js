@@ -50,7 +50,16 @@ async function post(url, body) {
   return data;
 }
 
+function markBuild(state) {
+  if (!state) return;
+  const text = "Version " + (state.version || "unknown") + " · Last pull " + (state.pulled || "not yet");
+  document.querySelectorAll(".build").forEach(function (node) {
+    node.textContent = text;
+  });
+}
+
 function render(state) {
+  markBuild(state);
   if (!state || state.authenticated === false) {
     showLogin();
     return;

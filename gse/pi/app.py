@@ -14,6 +14,7 @@ import os
 import hmac
 from functools import wraps
 
+import buildinfo
 import config
 from controller import GseController, GseError
 from flask import Flask, jsonify, render_template, request, session
@@ -60,10 +61,10 @@ def _call(fn):
     except GseError as exc:
         body = controller.snapshot()
         body.update(ok=False, error=str(exc))
-        return jsonify(body), 400
+        return jsonify(buildinfo.apply(body)), 400
     body = controller.snapshot()
     body.update(ok=True, error="")
-    return jsonify(body)
+    return jsonify(buildinfo.apply(body))
 
 
 @app.get("/")
@@ -74,11 +75,11 @@ def index():
 @app.get("/api/state")
 def state():
     if not _signed_on():
-        return jsonify(authenticated=False, mock=config.MOCK)
+        return jsonify(buildinfo.apply({"authenticated": False, "mock": config.MOCK}))
     controller.heartbeat()
     body = controller.snapshot()
     body["error"] = ""
-    return jsonify(body)
+    return jsonify(buildinfo.apply(body))
 
 
 @app.post("/api/login")

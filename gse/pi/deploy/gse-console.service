@@ -1,0 +1,17 @@
+[Unit]
+Description=GSE pad console
+After=gse-update.service
+Wants=gse-update.service
+
+[Service]
+Type=simple
+User=pad
+Group=pad
+WorkingDirectory=/home/pad/PistonLiquidRocket/gse/pi
+Environment=GSE_BUILD_INFO=/var/lib/gse/build-info.json
+ExecStart=/home/pad/gse-venv/bin/python app.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
