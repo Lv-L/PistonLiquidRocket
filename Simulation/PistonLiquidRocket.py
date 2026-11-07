@@ -39,7 +39,7 @@ plt.style.use('ggplot')
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Tuple
 
 try:
     from CoolProp.CoolProp import PropsSI as _CP
@@ -330,7 +330,7 @@ class EngineConfig:
     # from the design O/F ratio and inj_target_dp.
     cd_ox          : float           = 0.6    # discharge coefficient, N2O orifice(s)
     cd_fuel        : float           = 0.6    # discharge coefficient, fuel orifice(s)
-    ox_hole_diam   : Optional[float] = 2e-3   # N2O injector hole diameter [m]; None = auto-size
+    ox_hole_diam   : Optional[float] = 2.2e-3 # N2O injector hole diameter [m]; None = auto-size (sized for O/F 2.0 with feed-line losses)
     ox_n_holes     : int             = 6      # number of N2O injector holes
     fuel_hole_diam : Optional[float] = 1.5e-3 # fuel injector hole diameter [m]; None = auto-size
     fuel_n_holes   : int             = 6      # number of fuel injector holes
@@ -343,19 +343,22 @@ class EngineConfig:
     A_inj_ox     : Optional[float] = field(default=None, init=False)
     A_inj_fuel   : Optional[float] = field(default=None, init=False)
 
-    # Oxidiser (N2O) feed line  — pipe geometry + in-line valve
-    ox_line_id       : float = 7.94e-3  # inner diameter [m];  0 = no feed-line loss
-    ox_line_length   : float = 0.304    # total length [m]
-    ox_line_roughness: float = 1.5e-6   # wall roughness [m]  (smooth drawn tube default)
-    ox_valve_Cd      : float = 0.8      # valve discharge coefficient [-];  0 = no valve
-    ox_valve_diam    : float = 0.01     # valve bore diameter [m]
+    # Oxidiser (N2O) feed line  — AN6 PTFE hose + in-line valve + fittings
+    # (see OX_FITTINGS / FUEL_FITTINGS below the FeedLine section for the trains)
+    ox_line_id       : float = 7.94e-3  # AN6 PTFE hose inner diameter [m];  0 = no feed-line loss
+    ox_line_length   : float = 0.200    # hose length [m]
+    ox_line_roughness: float = 1.5e-6   # wall roughness [m]  (smooth PTFE liner)
+    ox_valve_Cd      : float = 0.9      # 1/4" BSP 2-pc full-port ball valve, fully open (K ≈ 0.23)
+    ox_valve_diam    : float = 8.0e-3   # valve bore diameter [m]
+    ox_fittings      : Tuple = field(default_factory=lambda: OX_FITTINGS)
 
-    # Fuel feed line  — pipe geometry + in-line valve
+    # Fuel feed line  — same parts, straight hose ends
     fuel_line_id       : float = 7.94e-3
-    fuel_line_length   : float = 1.219
+    fuel_line_length   : float = 0.900
     fuel_line_roughness: float = 1.5e-6
-    fuel_valve_Cd      : float = 0.8
-    fuel_valve_diam    : float = 0.01
+    fuel_valve_Cd      : float = 0.9
+    fuel_valve_diam    : float = 8.0e-3
+    fuel_fittings      : Tuple = field(default_factory=lambda: FUEL_FITTINGS)
 
     # O/F and fuel
     of_ratio         : float          = 2.0
@@ -677,16 +680,57 @@ class PistonTank:
 #   Feed line hydraulic model
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@dataclass(frozen=True)
+class Fitting:
+    """
+    A local (minor) loss in a feed line: ΔP = K · ½ρv², with v taken at `bore`.
+    Equivalent CdA = A_bore / √K, so it adds in series like any other restriction.
+    """
+    name : str
+    bore : float   # flow diameter the K is referenced to [m]
+    K    : float   # loss coefficient [-] (velocity heads at `bore`)
+
+    @property
+    def cda(self) -> float:
+        return np.pi / 4 * self.bore ** 2 / np.sqrt(self.K)
+
+
+# Representative fitting trains for the fluid system in
+# Documentation Vault/02-Design/01-Propulsion System/03-Fluid System.md.
+# Bores are estimates until the parts are measured; K values are standard
+# handbook figures (Idelchik / Crane TP-410) for the geometry described.
+_HOSE_END_BORE = 6.35e-3   # PTFE AN6 hose-end insert ID (~1/4"), est.
+_BSPT18_BORE   = 4.8e-3    # 1/8" BSPT x AN6 adapter bore, limited by 1/8" thread, est.
+
+FUEL_FITTINGS: Tuple[Fitting, ...] = (
+    Fitting("tank exit -> bulkhead port",    8.0e-3, 0.5),   # sharp-edged entrance
+    Fitting("1/4\" BSPT nipple (~100 mm)",   8.0e-3, 0.2),   # f·L/D ≈ 0.014·100/8
+    Fitting("1/4\" BSPT x AN6 adapter",      7.0e-3, 0.15),  # mild step 8 -> 7 mm
+    Fitting("straight hose end (tank)",      _HOSE_END_BORE, 0.5),  # contraction + re-expansion
+    Fitting("straight hose end (injector)",  _HOSE_END_BORE, 0.5),
+    Fitting("1/8\" BSPT x AN6 adapter",      _BSPT18_BORE, 1.3),    # 0.3 contraction + 1.0 dump into manifold
+)
+OX_FITTINGS: Tuple[Fitting, ...] = (
+    FUEL_FITTINGS[0], FUEL_FITTINGS[1], FUEL_FITTINGS[2],
+    Fitting("180° hose end (tank)",          _HOSE_END_BORE, 1.1),  # 0.5 insert + ~0.6 tight 180° bend
+    FUEL_FITTINGS[4],
+    Fitting("AN6 x 1/4\" BSPT adapter",      7.0e-3, 1.1),   # 0.1 step + 1.0 dump into manifold
+)
+
+
 @dataclass
 class FeedLine:
     """
-    Hydraulic model for a feed line (hose/pipe + in-line valve), all in CdA terms.
+    Hydraulic model for a feed line (hose/pipe + in-line valve + fittings),
+    all in CdA terms.
 
     Pipe CdA from Darcy-Weisbach (density cancels exactly):
       CdA_pipe = A / √(f · L/D)   where f = fully-turbulent Colebrook-White limit
 
-    Series combination with valve:
-      1/CdA_eff² = 1/CdA_pipe² + 1/CdA_valve²
+    Fitting CdA from its loss coefficient:  CdA_fit = A_bore / √K
+
+    Series combination:
+      1/CdA_eff² = 1/CdA_pipe² + 1/CdA_valve² + Σ 1/CdA_fit²
 
     f = 0.25 / [log₁₀(ε/3.7D)]²  — Re-independent (Moody chart fully-rough asymptote).
     Valid when Re > ~3500·(D/ε); holds well at propellant flow rates.
@@ -696,6 +740,7 @@ class FeedLine:
     roughness  : float = 1.5e-6   # absolute wall roughness [m] (smooth drawn tube default)
     valve_Cd   : float = 0.0      # valve discharge coefficient [-]; 0 = no valve loss
     valve_diam : float = 0.0      # valve bore diameter [m]
+    fittings   : Tuple[Fitting, ...] = ()   # local losses in series with pipe + valve
 
     def friction_factor(self) -> float:
         """Fully-turbulent Colebrook-White: 1/√f = −2·log₁₀(ε/3.7D)"""
@@ -721,6 +766,8 @@ class FeedLine:
             inv_sq += 1.0 / CdA_pipe ** 2
         if self.valve_cda > 0:
             inv_sq += 1.0 / self.valve_cda ** 2
+        for fit in self.fittings:
+            inv_sq += 1.0 / fit.cda ** 2
         return 1.0 / np.sqrt(inv_sq) if inv_sq > 0 else 0.0
 
     def summary(self) -> str:
@@ -733,6 +780,8 @@ class FeedLine:
         if self.valve_Cd > 0 and self.valve_diam > 0:
             CdA_v = self.valve_Cd * np.pi / 4 * self.valve_diam ** 2
             parts.append(f"valve {self.valve_diam*1e3:.2f} mm × Cd {self.valve_Cd:.3f} = CdA {CdA_v*1e6:.3f} mm²")
+        if self.fittings:
+            parts.append(f"{len(self.fittings)} fittings")
         desc = "  ".join(parts) if parts else "none"
         return f"{desc}  →  CdA={cda*1e6:.3f} mm²" if cda > 0 else "none"
 
@@ -766,11 +815,13 @@ class PistonEngine:
             inner_diam=cfg.ox_line_id,   length=cfg.ox_line_length,
             roughness=cfg.ox_line_roughness,
             valve_Cd=cfg.ox_valve_Cd,    valve_diam=cfg.ox_valve_diam,
+            fittings=tuple(cfg.ox_fittings),
         )
         self._feedline_fuel = FeedLine(
             inner_diam=cfg.fuel_line_id, length=cfg.fuel_line_length,
             roughness=cfg.fuel_line_roughness,
             valve_Cd=cfg.fuel_valve_Cd,  valve_diam=cfg.fuel_valve_diam,
+            fittings=tuple(cfg.fuel_fittings),
         )
         # Series combination: 1/K_eff^2 = 1/K_inj^2 + 1/K_line^2
         for fl, attr, rho in [
@@ -1087,12 +1138,13 @@ def print_config(cfg: EngineConfig, eng: PistonEngine):
     fl_ox   = eng._feedline_ox
     fl_fuel = eng._feedline_fuel
     print(f"  Feed lines")
-    print(f"    N2O  : {fl_ox.summary()}")
-    if fl_ox.valve_cda > 0:
-        print(f"           valve CdA = {fl_ox.valve_cda*1e6:.3f} mm²")
-    print(f"    Fuel : {fl_fuel.summary()}")
-    if fl_fuel.valve_cda > 0:
-        print(f"           valve CdA = {fl_fuel.valve_cda*1e6:.3f} mm²")
+    for label, fl in (("N2O ", fl_ox), ("Fuel", fl_fuel)):
+        print(f"    {label} : {fl.summary()}")
+        if fl.valve_cda > 0:
+            print(f"           valve CdA = {fl.valve_cda*1e6:.3f} mm²")
+        for fit in fl.fittings:
+            print(f"           {fit.name:<30s} Ø{fit.bore*1e3:.2f} mm  K={fit.K:.2f}"
+                  f"  CdA={fit.cda*1e6:.2f} mm²")
     print(f"  Injectors")
     print(f"    N2O  : {cfg.ox_n_holes}x Ø{cfg.ox_hole_diam*1e3:.3f} mm  "
           f"(A={cfg.A_inj_ox*1e6:.2f} mm²)  Cd={cfg.cd_ox:.3f}  "

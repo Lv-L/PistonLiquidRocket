@@ -119,6 +119,10 @@ cfg = EngineConfig(
     fuel_valve_Cd       = 1.0,
     fuel_valve_diam     = VALVE_DIAM,   # Cv=1.6
 
+    # HalfCatSim models no fitting losses beyond the line + valve
+    ox_fittings         = (),
+    fuel_fittings       = (),
+
     # --- Combustion efficiency ---
     cstar_eta        = 0.60,            # HalfCatSim
     nozzle_eta       = 0.97,

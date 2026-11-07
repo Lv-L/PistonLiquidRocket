@@ -34,7 +34,7 @@ A comparison of potential fuel types is summarised below:
 | Methanol                | Poor     | [$2.5/L](https://www.sydneysolvents.com.au/methanol-20-litre)                        | Delivery              | ~           | Almost invisible light blue  | "Should not be used" - Half Cat |
 On the basis of safety, the use of methanol was ruled out due to its high toxicity.
 
-For propellants, ethanol was chosen for its high performance and availability.
+For propellants, ethanol was chosen for its high performance and availability, with E85 as a secondary option for a more visible flame at the slight cost of performance. Running the engine with ethanol will require less maintenance as it doesn't leave a residue, unlike E85.
 
 ![[tc_isp_vs_lambda.png]]
 
@@ -63,14 +63,10 @@ The tank is a "piston style" tank that is the same as Half Cat's design, where t
 #### Regulators
 No regulators are used - instead the main valves are set to open at a point between the operating pressure and the burst pressure of the tank, in the case of an extremely hot day or radiative heating of the tank resulting in it being heated to greater than 35 degrees C.
 #### Valves
-1/4" NPT brass full port ball valve, 1000 psi - [Aircraft Spruce]([https://www.camlockfittings.com.au/2-piece-ball-valves-ss304.html](https://www.aircraftspruce.com.au/catalog/appages/highpressurevalve.php))
+1/4" (8mm) BSP, 304 Stainless Steel, 2 Pc Ball Valve, Full Port, 1000 PSI - [Camlock Fittings]([https://www.aircraftspruce.com.au/catalog/appages/highpressurevalve.php](https://www.camlockfittings.com.au/1-4-ball-valve-ss304.html))
 Use 3d print with [DS3225 servo - Amazon](https://www.amazon.com.au/AKLOSIPY-DS3225MG-Digital-Servo-Multiple/dp/B0FX16CGW4?source=ps-sl-shoppingads-lpcontext&psc=1&smid=A1VAS17HV99LTB) to convert to servo valve for ox fill valve, main ox valve and main fuel valve.
 #### Plumbing (Hose + Fittings)
-Half Cat's use of braided PTFE flex lines for hose is adopted. [AN6 (7/16" OD) line](https://www.efisolutions.com.au/200-series-ptfe-teflon-braided-stainless-steel-hos~50095) from EFI solutions is used (AN5 would be used for the fuel if not for its unavailability from EFI Solutions).
-
-For generic fittings, [Pirtek](https://www.pirtek.com.au/products/hydraulic/adaptors) is used.
-
-For the AN fittings connecting to flex line, EFI solutions is used.
+See [03-Fluid System](03-Fluid%20System.md)
 ## Analysis
 The simulation models a piston-fed N2O + liquid fuel rocket where a two-phase N2O tank self-pressurises and drives a piston to expel fuel. At each timestep it computes propellant mass flow rates through injector orifices (using incompressible orifice flow), calls rocketCEA to get ideal combustion properties (T0, γ, MW, c*), applies combustion efficiency to get actual c*, then solves the chamber pressure from c* = Pc·At/ṁ. Thrust and Isp follow from the nozzle expansion, and the N2O tank state evolves via an adiabatic energy balance accounting for liquid/vapour phase change.
 
